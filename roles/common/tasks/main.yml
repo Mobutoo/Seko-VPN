@@ -1,0 +1,112 @@
+---
+# ============================================================
+# Rôle : common
+# Description : Configuration de base du système Debian 13
+#   - Mise à jour des paquets
+#   - Création de l'utilisateur système avec sudo
+#   - Durcissement SSH
+#   - Configuration des locales et du timezone
+# ============================================================
+
+- name: Mise à jour du cache APT
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Mise à jour complète du système
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: yes
+    autoclean: yes
+  register: apt_upgrade
+
+- name: Installation des paquets de base
+  ansible.builtin.apt:
+    name:
+      - sudo
+      - curl
+      - wget
+      - gnupg
+      - ca-certificates
+      - apt-transport-https
+      - software-properties-common
+      - python3-pip                  # Requis pour les modules Ansible Docker
+      - unattended-upgrades        # Mises à jour de sécurité automatiques
+      - needrestart                # Détecte les services à redémarrer
+      - htop
+      - tmux
+      - jq
+      - tree
+      - logrotate
+      - rsync
+    state: present
+
+- name: Configuration du timezone
+  community.general.timezone:
+    name: Europe/Paris
+
+- name: "Création de l'utilisateur système : {{ system_user }}"
+  ansible.builtin.user:
+    name: "{{ system_user }}"
+    password: "{{ vault_system_user_password | password_hash('sha512') }}"
+    shell: /bin/bash
+    groups:
+      - sudo
+    append: yes
+    create_home: yes
+    state: present
+
+- name: "Ajout de la clé SSH pour {{ system_user }}"
+  ansible.posix.authorized_key:
+    user: "{{ system_user }}"
+    key: "{{ system_user_ssh_pubkey }}"
+    state: present
+    exclusive: yes                 # Supprime les autres clés autorisées
+
+- name: "Droit sudo sans mot de passe pour {{ system_user }} (déploiement uniquement)"
+  ansible.builtin.lineinfile:
+    path: "/etc/sudoers.d/{{ system_user }}"
+    line: "{{ system_user }} ALL=(ALL) NOPASSWD:ALL"
+    create: yes
+    mode: "0440"
+    validate: "visudo -cf %s"
+
+- name: Déploiement de la configuration SSH durcie
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "sshd -t -f %s"
+    backup: yes
+  notify: restart sshd
+
+- name: Activation des mises à jour automatiques de sécurité
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configuration d'unattended-upgrades (sécurité uniquement)
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Désactivation de l'accès root par mot de passe
+  ansible.builtin.user:
+    name: root
+    password_lock: yes

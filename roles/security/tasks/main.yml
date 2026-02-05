@@ -1,0 +1,125 @@
+---
+# ============================================================
+# Rôle : security
+# Description : Durcissement de la sécurité du serveur
+#   - Firewall UFW avec politique restrictive
+#   - Fail2Ban contre le brute-force
+#   - Paramètres kernel de sécurité (sysctl)
+#   - Désactivation des services inutiles
+# ============================================================
+
+# --- Installation des outils de sécurité ---
+- name: Installation de UFW et Fail2Ban
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+    state: present
+
+# --- Configuration du firewall UFW ---
+- name: Réinitialisation d'UFW
+  community.general.ufw:
+    state: reset
+
+- name: "UFW : politique par défaut - tout bloquer en entrée"
+  community.general.ufw:
+    direction: incoming
+    default: deny
+
+- name: "UFW : politique par défaut - autoriser la sortie"
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+
+- name: "UFW : ouverture des ports autorisés"
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ ufw_allowed_ports }}"
+
+- name: Activation d'UFW
+  community.general.ufw:
+    state: enabled
+    logging: "on"
+
+# --- Configuration de Fail2Ban ---
+- name: Déploiement de la configuration Fail2Ban
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart fail2ban
+
+- name: Activation et démarrage de Fail2Ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+# --- Durcissement kernel (sysctl) ---
+- name: Paramètres de sécurité kernel
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    state: present
+    reload: yes
+  loop:
+    # Protection contre le spoofing IP
+    - { key: "net.ipv4.conf.all.rp_filter", value: "1" }
+    - { key: "net.ipv4.conf.default.rp_filter", value: "1" }
+    # Ignorer les paquets ICMP redirect
+    - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.accept_redirects", value: "0" }
+    - { key: "net.ipv6.conf.all.accept_redirects", value: "0" }
+    - { key: "net.ipv6.conf.default.accept_redirects", value: "0" }
+    # Ne pas envoyer de redirections ICMP
+    - { key: "net.ipv4.conf.all.send_redirects", value: "0" }
+    - { key: "net.ipv4.conf.default.send_redirects", value: "0" }
+    # Protection contre le SYN flooding
+    - { key: "net.ipv4.tcp_syncookies", value: "1" }
+    # Ignorer les requêtes de broadcast ICMP
+    - { key: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }
+    # Journaliser les paquets martiens
+    - { key: "net.ipv4.conf.all.log_martians", value: "1" }
+    # Activer le forwarding IPv4 (nécessaire pour Docker et VPN)
+    - { key: "net.ipv4.ip_forward", value: "1" }
+    # Activer le forwarding IPv6 (nécessaire pour Headscale)
+    - { key: "net.ipv6.conf.all.forwarding", value: "1" }
+
+# --- Désactivation de services inutiles ---
+- name: Vérification de l'existence de rpcbind
+  ansible.builtin.stat:
+    path: /lib/systemd/system/rpcbind.service
+  register: rpcbind_service
+
+- name: Désactivation de rpcbind (si présent)
+  ansible.builtin.systemd:
+    name: rpcbind
+    state: stopped
+    enabled: no
+  when: rpcbind_service.stat.exists
+
+# --- Protection des fichiers sensibles ---
+- name: Restriction des permissions sur /etc/shadow
+  ansible.builtin.file:
+    path: /etc/shadow
+    mode: "0600"
+
+- name: Restriction des permissions sur /etc/gshadow
+  ansible.builtin.file:
+    path: /etc/gshadow
+    mode: "0600"
+
+- name: Restriction des permissions sur les clés SSH du serveur
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0600"
+  loop:
+    - /etc/ssh/ssh_host_ed25519_key
+    - /etc/ssh/ssh_host_rsa_key
+  failed_when: false  # Ignorer si les fichiers n'existent pas encore

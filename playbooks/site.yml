@@ -1,0 +1,118 @@
+---
+# ============================================================
+# Playbook principal : Déploiement VPN & Vault
+# ============================================================
+# Usage :
+#   Déploiement complet :
+#     ansible-playbook playbooks/site.yml
+#
+#   Déploiement d'un seul rôle (par tag) :
+#     ansible-playbook playbooks/site.yml --tags headscale
+#
+#   Mode check (dry-run) :
+#     ansible-playbook playbooks/site.yml --check --diff
+# ============================================================
+
+- name: "Déploiement VPN & Vault sur {{ server_ip }}"
+  hosts: all
+  become: true
+  gather_facts: true
+
+  # Vérifications avant exécution
+  pre_tasks:
+    - name: Vérification de la distribution cible
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Debian"
+          - ansible_distribution_major_version | int >= 12
+        fail_msg: >
+          Ce playbook cible Debian 12+ (trouvé : {{ ansible_distribution }}
+          {{ ansible_distribution_version }})
+
+    - name: Vérification que les variables obligatoires sont définies
+      ansible.builtin.assert:
+        that:
+          - system_user is defined and system_user | length > 0
+          - system_user_ssh_pubkey is defined and system_user_ssh_pubkey | length > 0
+          - domain_headscale is defined and domain_headscale | length > 0
+          - domain_vaultwarden is defined and domain_vaultwarden | length > 0
+          - domain_portainer is defined and domain_portainer | length > 0
+          - acme_email is defined and acme_email | length > 0
+          - vault_system_user_password is defined and vault_system_user_password != "CHANGER_MOI_mdp_sudo_fort"
+          - vault_vaultwarden_admin_token is defined and vault_vaultwarden_admin_token != "CHANGER_MOI_token_admin_vaultwarden"
+        fail_msg: >
+          Des variables obligatoires ne sont pas définies ou contiennent
+          encore les valeurs par défaut. Vérifiez vars.yml et vault.yml.
+
+    - name: Affichage du résumé de déploiement
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════╗
+          ║       DÉPLOIEMENT VPN & VAULT            ║
+          ╠══════════════════════════════════════════╣
+          ║ Utilisateur : {{ system_user }}
+          ║ Headscale   : {{ domain_headscale }}
+          ║ Vaultwarden : {{ domain_vaultwarden }}
+          ║ Portainer   : {{ domain_portainer }}
+          ║ Port SSH    : {{ ssh_custom_port }}
+          ╚══════════════════════════════════════════╝
+
+  roles:
+    # 1. Configuration système de base et création utilisateur
+    - role: common
+      tags: [common, base]
+
+    # 2. Durcissement de la sécurité (firewall, fail2ban, sysctl)
+    - role: security
+      tags: [security, firewall]
+
+    # 3. Installation de Docker et Docker Compose
+    - role: docker
+      tags: [docker]
+
+    # 4. Reverse proxy Caddy (SSL automatique)
+    - role: caddy
+      tags: [caddy, proxy]
+
+    # 5. Serveur VPN Headscale
+    - role: headscale
+      tags: [headscale, vpn]
+
+    # 6. Gestionnaire de mots de passe Vaultwarden
+    - role: vaultwarden
+      tags: [vaultwarden, vault]
+
+    # 7. Interface de supervision Portainer
+    - role: portainer
+      tags: [portainer]
+
+  # Actions post-déploiement
+  post_tasks:
+    - name: Résumé post-déploiement
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════╗
+          ║       DÉPLOIEMENT TERMINÉ ✓              ║
+          ╠══════════════════════════════════════════╣
+          ║                                          ║
+          ║ Services accessibles :                   ║
+          ║                                          ║
+          ║ 🔐 VPN Headscale :                      ║
+          ║    https://{{ domain_headscale }}
+          ║                                          ║
+          ║ 🗝️  Vaultwarden :                        ║
+          ║    https://{{ domain_vaultwarden }}
+          ║    Admin : https://{{ domain_vaultwarden }}/admin
+          ║                                          ║
+          ║ 📊 Portainer :                           ║
+          ║    https://{{ domain_portainer }}
+          ║                                          ║
+          ║ ⚠️  ACTIONS MANUELLES REQUISES :         ║
+          ║ 1. Créer un user Headscale (voir doc)    ║
+          ║ 2. Créer un compte Vaultwarden           ║
+          ║ 3. Créer le mot de passe admin Portainer ║
+          ║ 4. Désactiver les inscriptions VW        ║
+          ║ 5. Mettre à jour le port SSH dans        ║
+          ║    l'inventaire ({{ ssh_custom_port }})   ║
+          ║                                          ║
+          ╚══════════════════════════════════════════╝

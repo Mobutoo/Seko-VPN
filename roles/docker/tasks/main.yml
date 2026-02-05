@@ -1,0 +1,131 @@
+---
+# ============================================================
+# Rôle : docker
+# Description : Installation de Docker CE et Docker Compose
+#   - Ajout du dépôt officiel Docker
+#   - Installation de Docker CE
+#   - Configuration du daemon Docker (sécurité)
+#   - Ajout de l'utilisateur système au groupe docker
+# ============================================================
+
+- name: Suppression des anciens paquets Docker (si présents)
+  ansible.builtin.apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+    state: absent
+
+- name: Création du répertoire pour la clé GPG
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Téléchargement de la clé GPG Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Détection du nom de release pour le dépôt Docker
+  ansible.builtin.set_fact:
+    # Debian 13 (Trixie) peut ne pas être dans le dépôt Docker.
+    # Fallback sur bookworm si trixie n'est pas supporté.
+    docker_repo_release: >-
+      {{ 'bookworm' if ansible_distribution_release == 'trixie'
+         and docker_force_bookworm_repo | default(true)
+         else ansible_distribution_release }}
+
+- name: Ajout du dépôt Docker APT
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian
+      {{ docker_repo_release }} stable
+    filename: docker
+    state: present
+
+- name: Installation de Docker CE et plugins
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+
+- name: "Ajout de {{ system_user }} au groupe docker"
+  ansible.builtin.user:
+    name: "{{ system_user }}"
+    groups: docker
+    append: yes
+
+- name: Création du répertoire de configuration Docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+# Configuration du daemon Docker avec des options de sécurité
+- name: Configuration du daemon Docker (daemon.json)
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        },
+        "storage-driver": "overlay2",
+        "live-restore": true,
+        "userland-proxy": false,
+        "no-new-privileges": true,
+        "default-ulimits": {
+          "nofile": {
+            "Name": "nofile",
+            "Hard": 65536,
+            "Soft": 32768
+          }
+        }
+      }
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart docker
+
+- name: Activation et démarrage de Docker
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Installation du SDK Python Docker (requis par les modules Ansible)
+  ansible.builtin.pip:
+    name:
+      - docker
+      - docker-compose
+    state: present
+    extra_args: --break-system-packages
+
+- name: Vérification que Docker fonctionne
+  ansible.builtin.command: docker info
+  changed_when: false
+  register: docker_info
+
+- name: Affichage de la version Docker
+  ansible.builtin.debug:
+    msg: "Docker installé avec succès"
+  when: docker_info.rc == 0
+
+- name: Création du réseau Docker partagé pour le reverse proxy
+  community.docker.docker_network:
+    name: "{{ docker_network_name }}"
+    driver: bridge
+    state: present

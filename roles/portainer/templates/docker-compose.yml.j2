@@ -1,0 +1,33 @@
+---
+# Docker Compose - Portainer CE (supervision Docker)
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+
+services:
+  portainer:
+    image: portainer/portainer-ce:{{ portainer_version }}
+    container_name: portainer
+    restart: unless-stopped
+    volumes:
+      # Socket Docker en lecture seule pour la supervision
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
+    # Pas de port exposé publiquement - tout passe par Caddy
+    expose:
+      - "9000"
+    networks:
+      - {{ docker_network_name }}
+    # Sécurité
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Limites de ressources
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+
+networks:
+  {{ docker_network_name }}:
+    external: true

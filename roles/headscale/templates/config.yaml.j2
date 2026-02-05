@@ -1,0 +1,105 @@
+# ============================================================
+# Configuration Headscale {{ headscale_version }}
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+# ============================================================
+# Documentation : https://headscale.net/ref/configuration/
+
+# URL publique du serveur Headscale (avec HTTPS via Caddy)
+server_url: https://{{ domain_headscale }}
+
+# Adresse d'écoute interne (dans le conteneur Docker)
+listen_addr: 0.0.0.0:8080
+
+# Adresse gRPC (pour les commandes CLI)
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: false
+
+# --- Préfixes IP du réseau VPN ---
+prefixes:
+  v4: {{ headscale_ip_prefixes[0] }}
+  v6: {{ headscale_ip_prefixes[1] }}
+
+# --- DERP (Designated Encrypted Relays for Packets) ---
+# CRITIQUE : Configuration pour se passer des serveurs Tailscale Inc
+derp:
+  server:
+    # Activer le serveur DERP intégré à Headscale
+    # Cela permet aux clients de relayer le trafic via notre serveur
+    # quand une connexion directe WireGuard est impossible
+    enabled: true
+    # Région ID pour le serveur DERP intégré
+    region_id: 900
+    # Code de la région
+    region_code: "self"
+    # Nom de la région
+    region_name: "Self-hosted DERP"
+    # Port STUN (UDP) - doit être ouvert dans le firewall
+    stun_listen_addr: 0.0.0.0:3478
+    # Laisser Headscale déterminer automatiquement l'IP externe
+    automatically_add_embedded_derp_region: true
+    # IPv4 du serveur (laisser vide pour auto-détection)
+    ipv4: ""
+    ipv6: ""
+
+  # URL de la carte DERP externe (VIDE = pas de serveurs Tailscale)
+  urls: []
+
+  # Chemin vers notre carte DERP personnalisée (fichier local)
+  paths:
+    - /etc/headscale/derp-map.yaml
+
+  # Désactiver la mise à jour automatique depuis les URL Tailscale
+  auto_update_enabled: {{ headscale_derp_auto_update | lower }}
+  update_frequency: {{ headscale_derp_update_frequency }}
+
+# --- Base de données ---
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+
+# --- DNS ---
+dns:
+  magic_dns: {{ headscale_magic_dns | lower }}
+  base_domain: {{ headscale_base_domain }}
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 9.9.9.9
+
+# --- Politique de nœuds ---
+# Durée avant expiration des clés des nœuds (0 = pas d'expiration)
+node_update_check_interval: 10s
+
+# --- Ephemeral nodes ---
+# Suppression automatique des nœuds éphémères après déconnexion
+ephemeral_node_inactivity_timeout: 30m
+
+# --- Journalisation ---
+log:
+  level: info
+  format: text
+
+# --- ACL (Access Control Lists) ---
+# Fichier de politique d'accès (optionnel, à créer manuellement)
+# policy:
+#   path: /etc/headscale/acl.yaml
+#   mode: file
+
+# --- Paramètres de bruit (Noise protocol) ---
+# Utilisé par les clients Tailscale modernes
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+# --- Clé privée legacy ---
+private_key_path: /var/lib/headscale/private.key
+
+# --- OIDC (optionnel - désactivé par défaut) ---
+# Décommenter et configurer pour SSO
+# oidc:
+#   only_start_if_oidc_is_available: true
+#   issuer: "https://auth.example.com"
+#   client_id: "headscale"
+#   client_secret: "secret"
+#   allowed_users:
+#     - user@example.com

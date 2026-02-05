@@ -1,0 +1,42 @@
+---
+# ============================================================
+# Rôle : caddy
+# Description : Reverse proxy avec certificats SSL automatiques
+#   - Caddy gère automatiquement Let's Encrypt
+#   - Reverse proxy vers Headscale, Vaultwarden, Portainer
+#   - Pas besoin de certbot ni de cron pour le renouvellement
+# ============================================================
+
+- name: Création des répertoires Caddy
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0750"
+  loop:
+    - "{{ caddy_data_path }}"
+    - "{{ caddy_data_path }}/data"
+    - "{{ caddy_data_path }}/config"
+
+- name: Déploiement du Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_data_path }}/Caddyfile"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0640"
+
+- name: Déploiement du docker-compose Caddy
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ caddy_data_path }}/docker-compose.yml"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0640"
+
+- name: Démarrage de Caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ caddy_data_path }}"
+    state: present
+    pull: always

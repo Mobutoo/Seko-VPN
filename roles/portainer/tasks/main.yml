@@ -1,0 +1,33 @@
+---
+# ============================================================
+# Rôle : portainer
+# Description : Interface web de supervision Docker
+#   - Accessible uniquement via HTTPS (Caddy)
+#   - Pas d'exposition directe de port
+#   - Supervision uniquement (pas de déploiement)
+# ============================================================
+
+- name: Création des répertoires Portainer
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0750"
+  loop:
+    - "{{ portainer_data_path }}"
+    - "{{ portainer_data_path }}/data"
+
+- name: Déploiement du docker-compose Portainer
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ portainer_data_path }}/docker-compose.yml"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0640"
+
+- name: Démarrage de Portainer
+  community.docker.docker_compose_v2:
+    project_src: "{{ portainer_data_path }}"
+    state: present
+    pull: always

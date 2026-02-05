@@ -1,0 +1,73 @@
+---
+# ============================================================
+# Rôle : headscale
+# Description : Serveur de contrôle VPN WireGuard autohébergé
+#   - Alternative self-hosted à Tailscale
+#   - Configuré pour fonctionner SANS les serveurs Tailscale Inc
+#   - DERP relay intégré ou personnalisé
+# ============================================================
+
+- name: Création des répertoires Headscale
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0750"
+  loop:
+    - "{{ headscale_data_path }}"
+    - "{{ headscale_data_path }}/config"
+    - "{{ headscale_data_path }}/data"
+    - "{{ headscale_data_path }}/data/derp"
+
+# Déploiement de la configuration DERP personnalisée
+# Ceci remplace la carte DERP de Tailscale par notre propre serveur
+- name: Déploiement de la carte DERP personnalisée
+  ansible.builtin.template:
+    src: derp-map.yaml.j2
+    dest: "{{ headscale_data_path }}/config/derp-map.yaml"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0640"
+
+- name: Déploiement de la configuration Headscale
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ headscale_data_path }}/config/config.yaml"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0640"
+
+- name: Déploiement du docker-compose Headscale
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ headscale_data_path }}/docker-compose.yml"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0640"
+
+# Initialisation de la base de données SQLite au premier lancement
+- name: Vérification de l'existence de la base de données
+  ansible.builtin.stat:
+    path: "{{ headscale_data_path }}/data/db.sqlite"
+  register: headscale_db
+
+- name: Démarrage de Headscale
+  community.docker.docker_compose_v2:
+    project_src: "{{ headscale_data_path }}"
+    state: present
+    pull: always
+
+# Attente que le service soit prêt
+- name: Attente du démarrage de Headscale
+  ansible.builtin.command: >
+    docker exec headscale headscale version
+  register: headscale_check
+  retries: 10
+  delay: 5
+  until: headscale_check.rc == 0
+  changed_when: false
+
+- name: Affichage de la version Headscale
+  ansible.builtin.debug:
+    msg: "Headscale démarré : {{ headscale_check.stdout }}"

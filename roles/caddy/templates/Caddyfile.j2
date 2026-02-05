@@ -1,0 +1,85 @@
+# ============================================================
+# Caddyfile - Reverse Proxy avec SSL automatique
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+# ============================================================
+
+# Configuration globale
+{
+	# Email pour les certificats Let's Encrypt
+	email {{ acme_email }}
+
+	# Options de sécurité
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+# --- Headscale ---
+# Le reverse proxy doit transmettre les WebSockets pour Headscale
+{{ domain_headscale }} {
+	reverse_proxy headscale:8080 {
+		# Nécessaire pour les connexions WireGuard/Noise
+		flush_interval -1
+	}
+
+	# En-têtes de sécurité
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /data/logs/headscale.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# --- Vaultwarden ---
+{{ domain_vaultwarden }} {
+	# Endpoint principal
+	reverse_proxy vaultwarden:80
+
+	# En-têtes de sécurité renforcées pour un gestionnaire de mots de passe
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:;"
+		-Server
+	}
+
+	log {
+		output file /data/logs/vaultwarden.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# --- Portainer ---
+{{ domain_portainer }} {
+	reverse_proxy portainer:9000
+
+	# En-têtes de sécurité
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /data/logs/portainer.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

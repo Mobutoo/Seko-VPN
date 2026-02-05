@@ -1,0 +1,25 @@
+---
+# ============================================================
+# SECRETS - Chiffrer ce fichier avec ansible-vault !
+# ============================================================
+# Commande : ansible-vault encrypt inventory/group_vars/all/vault.yml
+#
+# Générer des mots de passe forts :
+#   openssl rand -base64 32
+#
+# IMPORTANT : Ne jamais commiter ce fichier en clair dans Git.
+
+# Mot de passe sudo de l'utilisateur système
+vault_system_user_password: "CHANGER_MOI_mdp_sudo_fort"
+
+# Token admin Vaultwarden (pour /admin)
+# Générer avec : openssl rand -base64 48
+vault_vaultwarden_admin_token: "CHANGER_MOI_token_admin_vaultwarden"
+
+# Clé API Headscale (pour les opérations API)
+# Sera générée automatiquement par Headscale au premier lancement,
+# mais on peut en pré-définir une ici pour l'automatisation.
+vault_headscale_api_key: ""
+
+# Mot de passe pour le chiffrement des backups (optionnel)
+vault_backup_encryption_key: "CHANGER_MOI_cle_backup"

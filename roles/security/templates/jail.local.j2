@@ -1,0 +1,36 @@
+# ============================================================
+# Configuration Fail2Ban - Géré par Ansible
+# NE PAS MODIFIER MANUELLEMENT
+# ============================================================
+
+[DEFAULT]
+# Durée du bannissement (en secondes)
+bantime = {{ fail2ban_bantime }}
+# Fenêtre de détection (en secondes)
+findtime = {{ fail2ban_findtime }}
+# Nombre de tentatives avant bannissement
+maxretry = {{ fail2ban_maxretry }}
+# Action : bannir via UFW et envoyer un log
+banaction = ufw
+# Backend de détection
+backend = systemd
+# IPs à ne jamais bannir (loopback)
+ignoreip = 127.0.0.1/8 ::1
+
+# --- SSH ---
+[sshd]
+enabled = true
+port = {{ ssh_custom_port }}
+filter = sshd
+logpath = %(sshd_log)s
+maxretry = {{ fail2ban_maxretry }}
+bantime = {{ fail2ban_bantime * 2 }}
+
+# Bannissement récurrent (récidivistes)
+[recidive]
+enabled = true
+filter = recidive
+logpath = /var/log/fail2ban.log
+bantime = {{ fail2ban_bantime * 24 }}
+findtime = {{ fail2ban_bantime }}
+maxretry = 3
