@@ -1,0 +1,121 @@
+---
+# ============================================================
+# Playbook : Durcissement SSH
+# ============================================================
+# À exécuter UNIQUEMENT après que site.yml a réussi et que
+# tous les services sont vérifiés et fonctionnels.
+#
+# Ce playbook :
+#   1. Change le port SSH (22 → port custom)
+#   2. Interdit la connexion root
+#   3. Interdit l'authentification par mot de passe
+#   4. Restreint l'accès SSH au seul utilisateur système
+#   5. Verrouille le mot de passe root
+#
+# Usage :
+#   ansible-playbook playbooks/harden-ssh.yml
+#
+# APRÈS exécution, mettre à jour l'inventaire :
+#   deploy_user: "{{ system_user }}"
+#   ssh_port: {{ ssh_custom_port }}
+# ============================================================
+
+- name: "Durcissement SSH sur {{ server_ip }}"
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Vérification que l'utilisateur système existe et a sudo
+      ansible.builtin.command: "su - {{ system_user }} -c 'sudo whoami'"
+      changed_when: false
+      register: user_check
+      failed_when: user_check.stdout != "root"
+
+    - name: Vérification que l'utilisateur peut se connecter en SSH
+      ansible.builtin.stat:
+        path: "/home/{{ system_user }}/.ssh/authorized_keys"
+      register: authkeys
+      failed_when: not authkeys.stat.exists
+
+    - name: Avertissement avant durcissement
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════╗
+          ║  ⚠️  DURCISSEMENT SSH EN COURS                ║
+          ╠══════════════════════════════════════════════╣
+          ║                                              ║
+          ║  Le port SSH va changer : 22 → {{ ssh_custom_port }}
+          ║  L'accès root SSH sera désactivé.            ║
+          ║  Seul '{{ system_user }}' pourra se connecter.
+          ║                                              ║
+          ║  Après cette étape, connectez-vous avec :    ║
+          ║  ssh -p {{ ssh_custom_port }} {{ system_user }}@{{ server_ip }}
+          ║                                              ║
+          ╚══════════════════════════════════════════════╝
+
+  tasks:
+    # --- Déploiement de la config SSH durcie ---
+    - name: Déploiement de la configuration SSH durcie
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/common/templates/sshd_config.j2"
+        dest: /etc/ssh/sshd_config
+        owner: root
+        group: root
+        mode: "0600"
+        validate: "sshd -t -f %s"
+        backup: yes
+
+    # On autorise le nouveau port dans UFW AVANT de redémarrer SSH
+    - name: "UFW : autoriser le nouveau port SSH {{ ssh_custom_port }}"
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_custom_port }}"
+        proto: tcp
+        comment: "SSH custom port"
+
+    # Redémarrage de SSH
+    - name: Redémarrage de sshd avec la nouvelle configuration
+      ansible.builtin.systemd:
+        name: sshd
+        state: restarted
+        daemon_reload: yes
+
+    # Vérification que le nouveau port est en écoute
+    - name: "Attente de SSH sur le port {{ ssh_custom_port }}"
+      ansible.builtin.wait_for:
+        port: "{{ ssh_custom_port }}"
+        state: started
+        timeout: 15
+
+    # Suppression de l'ancien port 22 dans UFW (si différent)
+    - name: "UFW : fermeture de l'ancien port 22"
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        delete: yes
+      when: ssh_custom_port | string != "22"
+
+    # Verrouillage du compte root
+    - name: Désactivation de l'accès root par mot de passe
+      ansible.builtin.user:
+        name: root
+        password_lock: yes
+
+  post_tasks:
+    - name: Résumé du durcissement SSH
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════╗
+          ║  ✓ SSH DURCI AVEC SUCCÈS                     ║
+          ╠══════════════════════════════════════════════╣
+          ║                                              ║
+          ║  Nouvelle connexion :                        ║
+          ║  ssh -p {{ ssh_custom_port }} {{ system_user }}@{{ server_ip }}
+          ║                                              ║
+          ║  METTEZ À JOUR l'inventaire :                ║
+          ║    deploy_user: "{{ system_user }}"
+          ║    ssh_port: {{ ssh_custom_port }}
+          ║                                              ║
+          ╚══════════════════════════════════════════════╝
