@@ -1,0 +1,31 @@
+# ============================================================
+# Monit Configuration Principale
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+# ============================================================
+
+# Intervalle de vérification (secondes)
+set daemon {{ monit_check_interval }}
+  with start delay 60
+
+# Fichier de log
+set log /var/log/monit.log
+
+# Fichier d'état (pour persistance entre redémarrages)
+set statefile /var/lib/monit/state
+
+# ID file
+set idfile /var/lib/monit/id
+
+# Interface web (écoute sur toutes les interfaces pour accès via Caddy)
+# La sécurité est assurée par :
+#   1. Caddy reverse proxy avec TLS (accès externe)
+#   2. Firewall (port 2812 fermé depuis l'extérieur)
+#   3. Authentification admin/password
+set httpd port {{ monit_web_port }}
+  use address 0.0.0.0
+  allow localhost
+  allow 172.16.0.0/255.240.0.0
+  allow admin:{{ vault_monit_password }}
+
+# Charger les configurations modulaires
+include /etc/monit/conf.d/*

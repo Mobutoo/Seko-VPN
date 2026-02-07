@@ -1,0 +1,9 @@
+---
+- name: restart monit
+  ansible.builtin.systemd:
+    name: monit
+    state: restarted
+
+- name: reload monit
+  ansible.builtin.command: monit reload
+  changed_when: true

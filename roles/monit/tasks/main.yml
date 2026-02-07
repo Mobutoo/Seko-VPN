@@ -1,0 +1,136 @@
+---
+# ============================================================
+# Rôle : monit
+# Description : Supervision système et conteneurs Docker
+#   - Installation native (apt) pour survivre à un crash Docker
+#   - Monitoring : CPU, RAM, disque, swap, conteneurs, HTTPS
+#   - Alerting : Telegram via script bash + API Bot
+# ============================================================
+
+- name: Installation de Monit
+  ansible.builtin.apt:
+    name: monit
+    state: present
+    update_cache: yes
+
+- name: Installation de curl (pour le script Telegram)
+  ansible.builtin.apt:
+    name: curl
+    state: present
+
+- name: Création du répertoire des scripts Monit
+  ansible.builtin.file:
+    path: /etc/monit/scripts
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+# Script d'alerte Telegram
+- name: Déploiement du script d'alerte Telegram
+  ansible.builtin.template:
+    src: telegram-alert.sh.j2
+    dest: /etc/monit/scripts/telegram-alert.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+# Script de vérification des conteneurs Docker
+- name: Déploiement du script de check Docker
+  ansible.builtin.template:
+    src: check-container.sh.j2
+    dest: /etc/monit/scripts/check-container.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+# Configuration principale Monit
+- name: Déploiement de la configuration Monit
+  ansible.builtin.template:
+    src: monitrc.j2
+    dest: /etc/monit/monitrc
+    owner: root
+    group: root
+    mode: "0700"
+  notify: restart monit
+
+# Configurations modulaires dans conf.d/
+- name: Déploiement du monitoring système
+  ansible.builtin.template:
+    src: conf.d/system.j2
+    dest: /etc/monit/conf.d/system
+    owner: root
+    group: root
+    mode: "0600"
+  notify: reload monit
+
+- name: Déploiement du monitoring Docker
+  ansible.builtin.template:
+    src: conf.d/docker-containers.j2
+    dest: /etc/monit/conf.d/docker-containers
+    owner: root
+    group: root
+    mode: "0600"
+  notify: reload monit
+
+- name: Déploiement du monitoring HTTPS
+  ansible.builtin.template:
+    src: conf.d/https-services.j2
+    dest: /etc/monit/conf.d/https-services
+    owner: root
+    group: root
+    mode: "0600"
+  notify: reload monit
+
+- name: Déploiement du monitoring Docker daemon
+  ansible.builtin.template:
+    src: conf.d/docker-daemon.j2
+    dest: /etc/monit/conf.d/docker-daemon
+    owner: root
+    group: root
+    mode: "0600"
+  notify: reload monit
+
+- name: Activation et démarrage de Monit
+  ansible.builtin.systemd:
+    name: monit
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+# Vérification que Monit tourne
+- name: Vérification du statut Monit
+  ansible.builtin.command: monit status
+  register: monit_status
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: monit_status.rc == 0
+
+# Test d'alerte Telegram
+- name: Test d'alerte Telegram
+  ansible.builtin.command: >
+    /etc/monit/scripts/telegram-alert.sh
+    "✅ Monit déployé avec succès sur {{ inventory_hostname }}"
+  changed_when: false
+  ignore_errors: yes
+
+- name: Résumé Monit
+  ansible.builtin.debug:
+    msg: |
+      ╔══════════════════════════════════════════════════╗
+      ║  ✓ MONIT DÉPLOYÉ                                 ║
+      ╠══════════════════════════════════════════════════╣
+      ║                                                  ║
+      ║  Interface web : http://localhost:2812            ║
+      ║  (accessible uniquement depuis le serveur)       ║
+      ║                                                  ║
+      ║  Monitoring :                                    ║
+      ║   - Système (CPU, RAM, disque, swap)             ║
+      ║   - Conteneurs Docker ({{ monit_containers | length }})      ║
+      ║   - Services HTTPS ({{ monit_https_checks | length }})       ║
+      ║   - Daemon Docker                                ║
+      ║                                                  ║
+      ║  Alertes Telegram : activées                     ║
+      ║                                                  ║
+      ╚══════════════════════════════════════════════════╝
