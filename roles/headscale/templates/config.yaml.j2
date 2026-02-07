@@ -1,62 +1,96 @@
+---
 # ============================================================
 # Configuration Headscale {{ headscale_version }}
+# Basée sur le config-example.yaml officiel v0.26
 # Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
 # ============================================================
-# Documentation : https://headscale.net/ref/configuration/
 
-# URL publique du serveur Headscale (avec HTTPS via Caddy)
+# URL publique du serveur (HTTPS via Caddy)
 server_url: https://{{ domain_headscale }}
 
-# Adresse d'écoute interne (dans le conteneur Docker)
+# Écoute interne (dans le conteneur Docker)
 listen_addr: 0.0.0.0:8080
 
-# Adresse gRPC (pour les commandes CLI)
+# Métriques (interne)
+metrics_listen_addr: 0.0.0.0:9090
+
+# gRPC (pour CLI distante)
 grpc_listen_addr: 0.0.0.0:50443
-grpc_allow_insecure: false
+grpc_allow_insecure: true
+
+# --- Noise protocol ---
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
 
 # --- Préfixes IP du réseau VPN ---
 prefixes:
   v4: {{ headscale_ip_prefixes[0] }}
   v6: {{ headscale_ip_prefixes[1] }}
+  allocation: sequential
 
-# --- DERP (Designated Encrypted Relays for Packets) ---
-# CRITIQUE : Configuration pour se passer des serveurs Tailscale Inc
+# --- DERP (relais chiffrés) ---
+# CONFIGURÉ POUR SE PASSER DES SERVEURS TAILSCALE INC
 derp:
   server:
     # Activer le serveur DERP intégré à Headscale
-    # Cela permet aux clients de relayer le trafic via notre serveur
-    # quand une connexion directe WireGuard est impossible
     enabled: true
-    # Région ID pour le serveur DERP intégré
-    region_id: 900
-    # Code de la région
+    region_id: 999
     region_code: "self"
-    # Nom de la région
     region_name: "Self-hosted DERP"
-    # Port STUN (UDP) - doit être ouvert dans le firewall
-    stun_listen_addr: 0.0.0.0:3478
-    # Laisser Headscale déterminer automatiquement l'IP externe
+    stun_listen_addr: "0.0.0.0:3478"
+    private_key_path: /var/lib/headscale/derp_server_private.key
     automatically_add_embedded_derp_region: true
-    # IPv4 du serveur (laisser vide pour auto-détection)
+    # Laisser vide pour auto-détection de l'IP publique
     ipv4: ""
     ipv6: ""
 
-  # URL de la carte DERP externe (VIDE = pas de serveurs Tailscale)
+  # PAS de serveurs DERP Tailscale Inc
   urls: []
 
-  # Chemin vers notre carte DERP personnalisée (fichier local)
+  # Carte DERP locale (pour ajouter d'autres relais si besoin)
   paths:
     - /etc/headscale/derp-map.yaml
 
-  # Désactiver la mise à jour automatique depuis les URL Tailscale
-  auto_update_enabled: {{ headscale_derp_auto_update | lower }}
-  update_frequency: {{ headscale_derp_update_frequency }}
+  auto_update_enabled: false
+  update_frequency: 24h
+
+# Désactiver la vérification de mises à jour
+disable_check_updates: true
+
+# Nœuds éphémères
+ephemeral_node_inactivity_timeout: 30m
 
 # --- Base de données ---
 database:
   type: sqlite
+  debug: false
+  gorm:
+    prepare_stmt: true
+    parameterized_queries: true
+    skip_err_record_not_found: true
+    slow_threshold: 1000
   sqlite:
     path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+    wal_autocheckpoint: 1000
+
+# --- TLS ---
+# Géré par Caddy en amont, pas besoin ici
+acme_url: ""
+acme_email: ""
+tls_letsencrypt_hostname: ""
+tls_cert_path: ""
+tls_key_path: ""
+
+# --- Logging ---
+log:
+  format: text
+  level: info
+
+# --- Policy / ACL ---
+policy:
+  mode: file
+  path: ""
 
 # --- DNS ---
 dns:
@@ -66,40 +100,3 @@ dns:
     global:
       - 1.1.1.1
       - 9.9.9.9
-
-# --- Politique de nœuds ---
-# Durée avant expiration des clés des nœuds (0 = pas d'expiration)
-node_update_check_interval: 10s
-
-# --- Ephemeral nodes ---
-# Suppression automatique des nœuds éphémères après déconnexion
-ephemeral_node_inactivity_timeout: 30m
-
-# --- Journalisation ---
-log:
-  level: info
-  format: text
-
-# --- ACL (Access Control Lists) ---
-# Fichier de politique d'accès (optionnel, à créer manuellement)
-# policy:
-#   path: /etc/headscale/acl.yaml
-#   mode: file
-
-# --- Paramètres de bruit (Noise protocol) ---
-# Utilisé par les clients Tailscale modernes
-noise:
-  private_key_path: /var/lib/headscale/noise_private.key
-
-# --- Clé privée legacy ---
-private_key_path: /var/lib/headscale/private.key
-
-# --- OIDC (optionnel - désactivé par défaut) ---
-# Décommenter et configurer pour SSO
-# oidc:
-#   only_start_if_oidc_is_available: true
-#   issuer: "https://auth.example.com"
-#   client_id: "headscale"
-#   client_secret: "secret"
-#   allowed_users:
-#     - user@example.com

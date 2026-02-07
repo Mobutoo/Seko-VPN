@@ -20,7 +20,7 @@ ignoreip = 127.0.0.1/8 ::1
 # --- SSH ---
 [sshd]
 enabled = true
-port = {{ ssh_custom_port }}
+port = 22,{{ ssh_custom_port }}
 filter = sshd
 logpath = %(sshd_log)s
 maxretry = {{ fail2ban_maxretry }}

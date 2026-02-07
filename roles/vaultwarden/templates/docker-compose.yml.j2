@@ -12,27 +12,22 @@ services:
       DOMAIN: "https://{{ domain_vaultwarden }}"
 
       # --- Interface admin ---
-      # Protégée par un token (accès via /admin)
       ADMIN_TOKEN: "{{ vault_vaultwarden_admin_token }}"
 
       # --- Inscriptions ---
       SIGNUPS_ALLOWED: "{{ vaultwarden_signups_allowed | lower }}"
 
       # --- Sécurité ---
-      # Désactiver les invitations par email (sécurité renforcée)
       INVITATIONS_ALLOWED: "false"
-      # Nombre de workers
       ROCKET_WORKERS: "{{ vaultwarden_rocket_workers }}"
-      # Écoute sur toutes les interfaces dans le conteneur
       ROCKET_ADDRESS: "0.0.0.0"
       ROCKET_PORT: "80"
 
-      # --- WebSocket (notifications temps réel) ---
+      # --- WebSocket ---
       WEBSOCKET_ENABLED: "true"
       WEBSOCKET_PORT: "3012"
 
-      # --- Logging ---
-      LOG_FILE: "/data/vaultwarden.log"
+      # --- Logging vers stdout (pas de fichier) ---
       LOG_LEVEL: "info"
       EXTENDED_LOGGING: "true"
 
@@ -43,33 +38,20 @@ services:
       ORG_CREATION_USERS: "all"
 
     volumes:
-      - ./data:/data
-    # Port interne uniquement - le trafic passe par Caddy
+      - {{ vaultwarden_data_path }}/data:/data
     expose:
       - "80"
       - "3012"
-    # Port local pour le healthcheck uniquement
     ports:
       - "127.0.0.1:8280:80"
     networks:
       - {{ docker_network_name }}
-    # Sécurité
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
     # Limites de ressources
     deploy:
       resources:
         limits:
           memory: 256M
           cpus: '0.5'
-    # Healthcheck
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/alive"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 networks:
   {{ docker_network_name }}:

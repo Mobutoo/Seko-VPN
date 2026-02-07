@@ -1,0 +1,11 @@
+# ============================================================
+# Monit - Supervision des conteneurs Docker
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+# ============================================================
+
+{% for container in monit_containers %}
+check program {{ container }}_container with path "/etc/monit/scripts/check-container.sh {{ container }}"
+  if status != 0 for 3 cycles then exec "/etc/monit/scripts/telegram-alert.sh"
+  group docker
+
+{% endfor %}

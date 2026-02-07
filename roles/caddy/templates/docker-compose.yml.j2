@@ -13,9 +13,9 @@ services:
       - "443:443"     # HTTPS
       - "443:443/udp" # HTTP/3 (QUIC)
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./data:/data          # Certificats SSL et état Caddy
-      - ./config:/config      # Configuration auto-générée
+      - {{ caddy_data_path }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ caddy_data_path }}/data:/data
+      - {{ caddy_data_path }}/config:/config
     networks:
       - {{ docker_network_name }}
     # Limites de ressources
@@ -24,13 +24,6 @@ services:
         limits:
           memory: 256M
           cpus: '0.5'
-    # Sécurité : capabilities minimales
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE    # Nécessaire pour les ports 80/443
-    security_opt:
-      - no-new-privileges:true
 
 networks:
   {{ docker_network_name }}:

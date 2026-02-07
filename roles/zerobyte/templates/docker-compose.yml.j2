@@ -1,0 +1,40 @@
+---
+# Docker Compose - Zerobyte (Gestion des sauvegardes)
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+#
+# Zerobyte est exposé uniquement via Caddy (pas de port sur le host).
+# Les données des services sont montées en lecture seule pour sauvegarde.
+
+services:
+  zerobyte:
+    image: ghcr.io/nicotsx/zerobyte:{{ zerobyte_version }}
+    container_name: zerobyte
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Paris
+      - BASE_URL=https://{{ domain_zerobyte }}
+      - APP_SECRET={{ vault_zerobyte_app_secret }}
+    expose:
+      - "4096"
+    volumes:
+      # Données persistantes Zerobyte (DB, repos locaux)
+      - /var/lib/zerobyte:/var/lib/zerobyte
+      # Timezone
+      - /etc/localtime:/etc/localtime:ro
+      # --- Volumes à sauvegarder (montés en lecture seule) ---
+      - {{ headscale_data_path }}/data:/backup-data/headscale:ro
+      - {{ headscale_data_path }}/config:/backup-data/headscale-config:ro
+      - {{ vaultwarden_data_path }}/data:/backup-data/vaultwarden:ro
+      - {{ headplane_data_path }}/data:/backup-data/headplane:ro
+      - {{ caddy_data_path }}/data:/backup-data/caddy:ro
+    networks:
+      - {{ docker_network_name }}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+
+networks:
+  {{ docker_network_name }}:
+    external: true

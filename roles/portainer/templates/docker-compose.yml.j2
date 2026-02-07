@@ -8,20 +8,13 @@ services:
     container_name: portainer
     restart: unless-stopped
     volumes:
-      # Socket Docker en lecture seule pour la supervision
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./data:/data
-    # Pas de port exposé publiquement - tout passe par Caddy
+      # Socket Docker en lecture-écriture (OBLIGATOIRE pour l'environnement local)
+      - /var/run/docker.sock:/var/run/docker.sock
+      - {{ portainer_data_path }}/data:/data
     expose:
       - "9000"
     networks:
       - {{ docker_network_name }}
-    # Sécurité
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    # Limites de ressources
     deploy:
       resources:
         limits:

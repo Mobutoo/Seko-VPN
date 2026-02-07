@@ -11,9 +11,9 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: "{{ system_user }}"
-    group: "{{ system_user }}"
-    mode: "0750"
+    owner: root
+    group: root
+    mode: "0755"
   loop:
     - "{{ vaultwarden_data_path }}"
     - "{{ vaultwarden_data_path }}/data"
@@ -22,9 +22,15 @@
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "{{ vaultwarden_data_path }}/docker-compose.yml"
-    owner: "{{ system_user }}"
-    group: "{{ system_user }}"
-    mode: "0640"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Arrêt de Vaultwarden si déjà lancé
+  community.docker.docker_compose_v2:
+    project_src: "{{ vaultwarden_data_path }}"
+    state: absent
+  ignore_errors: yes
 
 - name: Démarrage de Vaultwarden
   community.docker.docker_compose_v2:
@@ -39,6 +45,6 @@
     method: GET
     status_code: 200
   register: vw_health
-  retries: 10
+  retries: 15
   delay: 5
   until: vw_health.status == 200

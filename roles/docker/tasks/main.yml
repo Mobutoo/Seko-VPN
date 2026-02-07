@@ -82,7 +82,6 @@
           "max-size": "10m",
           "max-file": "3"
         },
-        "storage-driver": "overlay2",
         "live-restore": true,
         "userland-proxy": false,
         "no-new-privileges": true,
@@ -106,13 +105,11 @@
     enabled: yes
     daemon_reload: yes
 
-- name: Installation du SDK Python Docker (requis par les modules Ansible)
-  ansible.builtin.pip:
+- name: Installation du SDK Python Docker (pour modules Ansible)
+  ansible.builtin.apt:
     name:
-      - docker
-      - docker-compose
+      - python3-docker           # SDK Python packagé Debian, compatible Python 3.13
     state: present
-    extra_args: --break-system-packages
 
 - name: Vérification que Docker fonctionne
   ansible.builtin.command: docker info

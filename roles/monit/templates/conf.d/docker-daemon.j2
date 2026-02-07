@@ -1,0 +1,12 @@
+# ============================================================
+# Monit - Supervision du daemon Docker
+# Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
+# ============================================================
+
+check process docker with pidfile /var/run/docker.pid
+  start program = "/usr/bin/systemctl start docker"
+  stop program  = "/usr/bin/systemctl stop docker"
+  if does not exist for 3 cycles then exec "/etc/monit/scripts/telegram-alert.sh"
+  if does not exist for 5 cycles then restart
+  if 3 restarts within 10 cycles then exec "/etc/monit/scripts/telegram-alert.sh"
+  group docker

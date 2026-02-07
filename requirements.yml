@@ -1,0 +1,20 @@
+---
+# ============================================================
+# Dépendances Ansible - Collections requises
+# ============================================================
+# Installer avec : ansible-galaxy collection install -r requirements.yml
+# Mettre à jour  : ansible-galaxy collection install -r requirements.yml --upgrade
+
+collections:
+  # Modules Docker (docker_compose_v2, docker_network, docker_container, etc.)
+  # v5.0+ requis pour compatibilité Compose v5 / Engine 29
+  - name: community.docker
+    version: ">=5.0.0"
+
+  # Modules système (ufw, sysctl, etc.)
+  - name: community.general
+    version: ">=9.0.0"
+
+  # Modules POSIX (sysctl, authorized_key, etc.)
+  - name: ansible.posix
+    version: ">=2.0.0"

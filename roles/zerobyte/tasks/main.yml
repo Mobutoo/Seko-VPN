@@ -1,0 +1,78 @@
+---
+# ============================================================
+# Rôle : zerobyte
+# Description : Pilotage des sauvegardes locales et distantes
+#   - Zerobyte (https://github.com/nicotsx/zerobyte)
+#   - Basé sur Restic, support S3/SFTP/NFS/SMB/local
+#   - UI web pour la gestion des volumes, repos et schedules
+# ============================================================
+
+- name: Création des répertoires Zerobyte
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ zerobyte_data_path }}"
+    - /var/lib/zerobyte
+
+- name: Déploiement du docker-compose Zerobyte
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ zerobyte_data_path }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Arrêt de Zerobyte si déjà lancé
+  community.docker.docker_compose_v2:
+    project_src: "{{ zerobyte_data_path }}"
+    state: absent
+  ignore_errors: yes
+
+- name: Démarrage de Zerobyte
+  community.docker.docker_compose_v2:
+    project_src: "{{ zerobyte_data_path }}"
+    state: present
+    pull: always
+
+# Attente que Zerobyte soit prêt
+- name: Attente du démarrage de Zerobyte
+  ansible.builtin.shell: |
+    docker inspect -f '{{ '{{' }}.State.Running{{ '}}' }}' zerobyte
+  register: zb_health
+  retries: 15
+  delay: 5
+  until: zb_health.stdout | trim == "true"
+  changed_when: false
+
+- name: Vérification des logs Zerobyte
+  ansible.builtin.command: docker logs --tail 5 zerobyte
+  register: zb_logs
+  changed_when: false
+
+- name: Affichage des logs Zerobyte
+  ansible.builtin.debug:
+    msg: "{{ zb_logs.stdout_lines + zb_logs.stderr_lines }}"
+
+- name: Résumé Zerobyte
+  ansible.builtin.debug:
+    msg: |
+      ╔══════════════════════════════════════════════════╗
+      ║  ✓ ZEROBYTE DÉPLOYÉ                              ║
+      ╠══════════════════════════════════════════════════╣
+      ║                                                  ║
+      ║  URL : https://{{ domain_zerobyte }}              ║
+      ║                                                  ║
+      ║  Volumes montés pour sauvegarde :                ║
+      ║   - Headscale : /backup-data/headscale           ║
+      ║   - Vaultwarden : /backup-data/vaultwarden       ║
+      ║   - Headplane : /backup-data/headplane           ║
+      ║   - Caddy : /backup-data/caddy                   ║
+      ║                                                  ║
+      ║  ⚠️  Créer un compte au premier accès             ║
+      ║  Puis configurer vos repos et schedules          ║
+      ║                                                  ║
+      ╚══════════════════════════════════════════════════╝
