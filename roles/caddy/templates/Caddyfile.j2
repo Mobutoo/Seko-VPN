@@ -120,3 +120,26 @@
 		}
 	}
 }
+
+# --- Monit (Supervision et alerting) ---
+# Monit tourne sur le host (apt), pas dans Docker.
+# On passe par l'IP passerelle du réseau bridge Docker (172.17.0.1)
+# pour atteindre localhost:2812 du host depuis le conteneur Caddy.
+{{ domain_monit }} {
+	reverse_proxy 172.17.0.1:{{ monit_web_port }}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /data/logs/monit.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

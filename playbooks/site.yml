@@ -45,6 +45,7 @@
           - vault_system_user_password is defined and vault_system_user_password != "CHANGER_MOI_mdp_sudo_fort"
           - vault_vaultwarden_admin_token is defined and vault_vaultwarden_admin_token != "CHANGER_MOI_token_admin_vaultwarden"
           - domain_zerobyte is defined and domain_zerobyte | length > 0
+          - domain_monit is defined and domain_monit | length > 0
           - vault_telegram_bot_token is defined and vault_telegram_bot_token != "CHANGER_MOI_bot_token"
           - vault_telegram_chat_id is defined and vault_telegram_chat_id != "CHANGER_MOI_chat_id"
           - vault_zerobyte_app_secret is defined and vault_zerobyte_app_secret != "CHANGER_MOI_zerobyte_secret_hex64"
@@ -64,7 +65,7 @@
           ║ Vaultwarden : {{ domain_vaultwarden }}
           ║ Portainer   : {{ domain_portainer }}
           ║ Zerobyte    : {{ domain_zerobyte }}
-          ║ Monit       : localhost:{{ monit_web_port }}
+          ║ Monit       : {{ domain_monit }}
           ╚══════════════════════════════════════════╝
 
   roles:
@@ -138,9 +139,10 @@
           ║  - https://{{ domain_vaultwarden }}
           ║  - https://{{ domain_portainer }}
           ║  - https://{{ domain_zerobyte }}
+          ║  - https://{{ domain_monit }}
           ║                                              ║
           ║ Supervision :                                ║
-          ║  - Monit (localhost:{{ monit_web_port }})
+          ║  - Monit (https://{{ domain_monit }})
           ║  - Alertes Telegram activées                 ║
           ║                                              ║
           ║ ⚠️  PROCHAINES ÉTAPES :                      ║

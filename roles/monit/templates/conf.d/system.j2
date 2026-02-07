@@ -2,10 +2,9 @@
 # Monit - Supervision système
 # Géré par Ansible - NE PAS MODIFIER MANUELLEMENT
 # ============================================================
-
-# --- Alertes Telegram ---
-set alert root@localhost with reminder on 10 cycles
-  exec "/etc/monit/scripts/telegram-alert.sh"
+# Les alertes Telegram sont déclenchées via exec dans chaque check.
+# Monit passe automatiquement les variables $MONIT_SERVICE,
+# $MONIT_EVENT et $MONIT_DESCRIPTION au script.
 
 # --- CPU ---
 check system $HOST
