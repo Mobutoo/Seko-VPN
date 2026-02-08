@@ -1,0 +1,11 @@
+---
+profile: production
+
+skip_list:
+  # verify.yml utilise 'command' pour docker ps — acceptable dans les tests
+  - command-instead-of-module
+
+exclude_paths:
+  - .venv/
+  - .venv-ci/
+  - .molecule/

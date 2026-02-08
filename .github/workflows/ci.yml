@@ -1,0 +1,253 @@
+---
+# ============================================================
+# Pipeline CI/CD — vpn-vault-deploy
+# ============================================================
+# 3 stages :
+#   1. lint      — yamllint + ansible-lint (chaque push/PR)
+#   2. molecule  — Tests Molecule par rôle en parallèle (chaque push/PR)
+#   3. integration — Déploiement complet sur VM éphémère Hetzner (main uniquement)
+#
+# Coût estimé du job integration :
+#   - Hetzner CX22 : €0.006/heure → ~€0.01 par exécution (~10 min)
+#   - Datacenter : Falkenstein (fsn1), Allemagne
+#   - Pas de volume/stockage additionnel nécessaire (40 GB local suffisent)
+# ============================================================
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ========================================
+  # Stage 1 : Lint
+  # ========================================
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install lint toolchain
+        run: |
+          pip install -U pip wheel
+          pip install ansible-dev-tools yamllint
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+  # ========================================
+  # Stage 2 : Molecule (tests unitaires par rôle)
+  # ========================================
+  molecule:
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        role:
+          - common
+          - security
+          - docker
+          - caddy
+          - headscale
+          - headplane
+          - vaultwarden
+          - portainer
+          - zerobyte
+          - monit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Molecule + Docker plugin
+        run: |
+          pip install -U pip wheel
+          pip install ansible-dev-tools molecule "molecule-plugins[docker]"
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Run Molecule — ${{ matrix.role }}
+        working-directory: roles/${{ matrix.role }}
+        run: molecule test
+
+  # ========================================
+  # Stage 3 : Integration (VM éphémère Hetzner)
+  # ========================================
+  # Exécuté uniquement sur la branche main, après succès de Molecule.
+  # Crée un serveur CX22 (le moins cher, €0.006/h) à Falkenstein (fsn1)
+  # avec Debian 12, exécute site.yml, puis détruit le serveur.
+  #
+  # Prérequis GitHub Secrets :
+  #   - HCLOUD_TOKEN      : Token API Hetzner Cloud (lecture/écriture)
+  #   - SSH_PRIVATE_KEY    : Clé privée Ed25519 pour accès root
+  #   - VAULT_PASSWORD     : Mot de passe Ansible Vault
+  #
+  # Aucun stockage additionnel (Volume) n'est nécessaire :
+  #   - Le CX22 fournit 40 GB de NVMe local, suffisant pour le déploiement
+  #   - La VM est éphémère (créée puis détruite à chaque run)
+  # ============================================================
+  integration:
+    runs-on: ubuntu-latest
+    needs: molecule
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Ansible + collections
+        run: |
+          pip install -U pip wheel ansible-core
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Validate secrets are present
+        run: |
+          errors=0
+          if [ -z "${{ secrets.HCLOUD_TOKEN }}" ]; then
+            echo "::error::Secret HCLOUD_TOKEN manquant"
+            errors=$((errors + 1))
+          fi
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "::error::Secret SSH_PRIVATE_KEY manquant"
+            errors=$((errors + 1))
+          fi
+          if [ -z "${{ secrets.VAULT_PASSWORD }}" ]; then
+            echo "::error::Secret VAULT_PASSWORD manquant"
+            errors=$((errors + 1))
+          fi
+          if [ $errors -gt 0 ]; then
+            echo "::error::$errors secret(s) manquant(s). Configurez-les dans Settings > Secrets."
+            exit 1
+          fi
+
+      - name: Setup hcloud CLI
+        uses: hetznercloud/setup-hcloud@v1
+
+      - name: Create ephemeral Hetzner server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Configurer le contexte hcloud
+          hcloud context create ci --token "$HCLOUD_TOKEN" 2>/dev/null || true
+          hcloud context use ci
+
+          # Préparer la clé SSH
+          echo "$SSH_PRIVATE_KEY" > /tmp/id_ed25519
+          chmod 600 /tmp/id_ed25519
+          ssh-keygen -y -f /tmp/id_ed25519 > /tmp/id_ed25519.pub
+
+          # Créer ou réutiliser la clé SSH dans Hetzner
+          if ! hcloud ssh-key describe gha-ci-key >/dev/null 2>&1; then
+            hcloud ssh-key create --name gha-ci-key --public-key-from-file /tmp/id_ed25519.pub
+          fi
+
+          # Créer le serveur éphémère
+          # CX22 = le moins cher (2 vCPU, 4 GB, 40 GB NVMe) — €0.006/h
+          # fsn1 = Falkenstein, Allemagne (datacenter EU, RGPD)
+          # Pas de volume additionnel nécessaire
+          SERVER_NAME="ansible-ci-${{ github.run_id }}"
+          hcloud server create \
+            --name "$SERVER_NAME" \
+            --type cx22 \
+            --image debian-12 \
+            --location fsn1 \
+            --ssh-key gha-ci-key \
+            --label "env=ci,run=${{ github.run_id }}"
+
+          IP=$(hcloud server ip "$SERVER_NAME")
+          echo "SERVER_NAME=$SERVER_NAME" >> "$GITHUB_ENV"
+          echo "SERVER_IP=$IP" >> "$GITHUB_ENV"
+          echo "✅ Serveur créé : $SERVER_NAME ($IP) — CX22 @ fsn1"
+
+      - name: Wait for SSH
+        run: |
+          set -euo pipefail
+          echo "⏳ Attente SSH sur ${{ env.SERVER_IP }}..."
+          for i in $(seq 1 60); do
+            if ssh -o StrictHostKeyChecking=no \
+                   -o ConnectTimeout=5 \
+                   -o UserKnownHostsFile=/dev/null \
+                   -i /tmp/id_ed25519 \
+                   root@${{ env.SERVER_IP }} "echo ok" 2>/dev/null; then
+              echo "✅ SSH prêt après ~$((i * 5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "❌ SSH non disponible après 5 minutes"
+          exit 1
+
+      - name: Prepare CI inventory and vault
+        env:
+          VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # Fichier de mot de passe Vault
+          echo "$VAULT_PASSWORD" > /tmp/.vault_pass
+          chmod 600 /tmp/.vault_pass
+
+          # Inventaire CI dynamique
+          cat > /tmp/inventory-ci.yml <<EOF
+          all:
+            hosts:
+              ci-server:
+                ansible_host: ${{ env.SERVER_IP }}
+                ansible_user: root
+                ansible_ssh_private_key_file: /tmp/id_ed25519
+          EOF
+
+      - name: Run full site.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook \
+            -i /tmp/inventory-ci.yml \
+            playbooks/site.yml \
+            --vault-password-file /tmp/.vault_pass \
+            -v
+
+      - name: Destroy ephemeral server
+        if: always()
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${SERVER_NAME:-}" ]; then
+            hcloud context use ci 2>/dev/null || true
+            hcloud server delete "$SERVER_NAME" 2>/dev/null || true
+            echo "🗑️  Serveur $SERVER_NAME détruit"
+          fi

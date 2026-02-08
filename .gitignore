@@ -1,0 +1,16 @@
+# Ignorer les dossiers de données (Volumes Docker)
+data/
+**/data/
+
+# Ignorer les fichiers de secrets Ansible
+vault.yml
+secrets.yml
+*.vault
+
+# Ignorer les fichiers de configuration contenant des mots de passe
+config.yaml
+.env
+
+# Ignorer les fichiers temporaires
+*.log
+.ansible_cache/

@@ -1,0 +1,99 @@
+Metadata-Version: 2.4
+Name: molecule-plugins
+Version: 25.8.12
+Summary: Molecule Plugins
+Author-email: Sorin Sbarnea <sorin.sbarnea@gmail.com>
+Maintainer-email: Sorin Sbarnea <sorin.sbarnea@gmail.com>
+License: MIT
+Project-URL: homepage, https://github.com/ansible-community/molecule-plugins
+Project-URL: documentation, https://molecule.readthedocs.io/
+Project-URL: repository, https://github.com/ansible-community/molecule-plugins
+Project-URL: changelog, https://github.com/ansible-community/molecule-plugins/releases
+Keywords: ansible,testing,molecule,plugin
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: Intended Audience :: System Administrators
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: POSIX
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python
+Classifier: Topic :: System :: Systems Administration
+Classifier: Topic :: Software Development :: Quality Assurance
+Classifier: Topic :: Software Development :: Testing
+Classifier: Topic :: Utilities
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: molecule>=25.1.0
+Provides-Extra: test
+Requires-Dist: pytest-helpers-namespace>=2019.1.8; extra == "test"
+Requires-Dist: molecule[test]>=25.1.0; extra == "test"
+Provides-Extra: azure
+Provides-Extra: docker
+Requires-Dist: selinux; sys_platform == "linux2" and extra == "docker"
+Requires-Dist: selinux; sys_platform == "linux" and extra == "docker"
+Requires-Dist: docker>=4.3.1; extra == "docker"
+Requires-Dist: requests; extra == "docker"
+Provides-Extra: ec2
+Provides-Extra: gce
+Requires-Dist: requests>=2.31.0; extra == "gce"
+Requires-Dist: google-auth>=2.28.2; extra == "gce"
+Provides-Extra: podman
+Provides-Extra: selinux
+Requires-Dist: selinux; sys_platform == "linux2" and extra == "selinux"
+Requires-Dist: selinux; sys_platform == "linux" and extra == "selinux"
+Provides-Extra: vagrant
+Requires-Dist: python-vagrant; extra == "vagrant"
+Provides-Extra: openstack
+Requires-Dist: openstacksdk>=1.1.0; extra == "openstack"
+Dynamic: license-file
+
+# molecule-plugins
+
+This repository contains the following molecule plugins:
+
+- azure
+- containers
+- docker
+- ec2
+- gce
+- openstack
+- podman
+- vagrant
+
+Installing `molecule-plugins` does not install dependencies specific to each,
+plugin. To install these you need to install the extras for each plugin, like
+`pip3 install 'molecule-plugins[azure]'`.
+
+Before installing these plugins be sure that you uninstall their old standalone
+packages, like `pip3 uninstall molecule-azure`. If you fail to do so, you will
+end-up with a broken setup, as multiple plugins will have the same entry points,
+registered.
+
+## Creating new releases
+
+The `release.yml` workflow generates the wheel and uploads the release to PyPI.
+Here are the steps you need to kick that process off:
+
+1. Use a calver tag in the format vYY.MM.DD.
+
+2. Create a new tag and push it to the repo.
+
+   ```bash
+   git tag -s <NEW_VERSION> -m "Tag message"
+   git push --tags upstream
+   ```
+
+   > It is possible to create lightweight tags using `git tag <NEW_VERSION>` but signed tags are preferred.
+
+3. Publish the release with either the GitHub CLI or in a browser.
+   See the [GitHub documentation about managing releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
+4. Check the [release workflow](https://github.com/ansible-community/molecule-plugins/actions/workflows/release.yml) runs successfully.
+5. Verify the new version is available from the [molecule-plugins](https://pypi.org/project/molecule-plugins/) page on PyPI.
