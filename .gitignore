@@ -10,7 +10,19 @@ secrets.yml
 # Ignorer les fichiers de configuration contenant des mots de passe
 config.yaml
 .env
+-env.*
 
 # Ignorer les fichiers temporaires
 *.log
 .ansible_cache/
+
+#autre
+.idea/
+.vscode/
+.DS_Store
+node_modules/
+__pycache__/
+*.log
+*.sqlite3
+*.db
+
