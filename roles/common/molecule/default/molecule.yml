@@ -11,5 +11,7 @@ platforms:
     cgroupns_mode: host
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "../../../../roles"
 verifier:
   name: ansible

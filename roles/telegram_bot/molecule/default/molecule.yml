@@ -13,5 +13,7 @@ platforms:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "../../../../roles"
 verifier:
   name: ansible
