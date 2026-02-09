@@ -1,0 +1,8 @@
+---
+- name: Prepare - Prerequisites for hardening
+  hosts: all
+  become: true
+  tasks:
+    - name: Mettre à jour le cache apt
+      ansible.builtin.apt:
+        update_cache: true

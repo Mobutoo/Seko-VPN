@@ -105,7 +105,7 @@
     groups: sudo
     append: true
     create_home: true
-    password: "{{ vault_system_user_password | password_hash('sha512', 'seko_salt_fixed') }}"
+    password: "{{ vault_system_user_password | password_hash('sha512', 'sekoSaltV3abcd') }}"
 
 - name: Configurer sudo sans mot de passe
   ansible.builtin.copy:

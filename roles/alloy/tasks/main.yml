@@ -9,6 +9,7 @@
 
 - name: Ajouter la clé GPG Grafana
   ansible.builtin.shell:
+    executable: /bin/bash
     cmd: |
       set -o pipefail
       curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/grafana.gpg

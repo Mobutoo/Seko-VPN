@@ -9,6 +9,7 @@
 
 - name: Ajouter la clé GPG Docker officielle
   ansible.builtin.shell:
+    executable: /bin/bash
     cmd: |
       set -o pipefail
       install -m 0755 -d /etc/apt/keyrings
@@ -18,6 +19,7 @@
 
 - name: Ajouter le dépôt Docker
   ansible.builtin.shell:
+    executable: /bin/bash
     cmd: |
       set -o pipefail
       echo "deb [arch=$(dpkg --print-architecture) \

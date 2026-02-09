@@ -1,0 +1,18 @@
+---
+- name: Prepare - Prerequisites for common
+  hosts: all
+  become: true
+  tasks:
+    - name: Mettre à jour le cache apt
+      ansible.builtin.apt:
+        update_cache: true
+    - name: Installer pip
+      ansible.builtin.apt:
+        name: python3-pip
+        state: present
+    - name: Installer passlib (requis pour password_hash)
+      ansible.builtin.pip:
+        name: passlib
+        state: present
+      environment:
+        PIP_BREAK_SYSTEM_PACKAGES: "1"
