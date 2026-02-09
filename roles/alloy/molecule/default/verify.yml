@@ -13,12 +13,14 @@
       ansible.builtin.command:
         cmd: systemctl is-active alloy
       register: alloy_active_check
+      when: ansible_virtualization_type != "docker"
       changed_when: false
 
     - name: Valider Alloy actif
       ansible.builtin.assert:
         that:
           - "'active' in alloy_active_check.stdout"
+      when: ansible_virtualization_type != "docker"
 
     - name: Vérifier la config Alloy
       ansible.builtin.stat:

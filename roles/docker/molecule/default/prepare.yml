@@ -1,0 +1,15 @@
+---
+- name: Prepare - Prerequisites for docker
+  hosts: all
+  become: true
+  tasks:
+    - name: Mettre à jour le cache apt
+      ansible.builtin.apt:
+        update_cache: true
+    - name: Installer curl
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg
+          - lsb-release
+        state: present

@@ -13,12 +13,14 @@
       ansible.builtin.command:
         cmd: systemctl is-active monit
       register: monit_active_check
+      when: ansible_virtualization_type != "docker"
       changed_when: false
 
     - name: Valider Monit actif
       ansible.builtin.assert:
         that:
           - "'active' in monit_active_check.stdout"
+      when: ansible_virtualization_type != "docker"
 
     - name: Vérifier le script Telegram
       ansible.builtin.stat:

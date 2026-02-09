@@ -18,6 +18,7 @@
       ansible.builtin.command:
         cmd: chronyc tracking
       register: hardening_chrony_check
+      when: ansible_virtualization_type != "docker"
       changed_when: false
 
     - name: Vérifier logrotate Monit
