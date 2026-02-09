@@ -132,9 +132,6 @@
     - { key: "fs.file-max", value: "2097152" }
     - { key: "vm.swappiness", value: "10" }
   when: ansible_virtualization_type != "docker"
-
-# --- Docker daemon limits ---
-    when: ansible_virtualization_type != "docker"
 - name: Créer le répertoire override Docker
   ansible.builtin.file:
     path: /etc/systemd/system/docker.service.d
