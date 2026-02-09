@@ -1,4 +1,51 @@
 ---
+# ============================================================
+# roles/common/tasks/main.yml — Paquets de base + utilisateur
+# Patché pour Debian 13 minimal (IONOS) : corrige les dépôts
+# avant toute installation de paquet
+# ============================================================
+
+# ── Correction Debian 13 minimal (image IONOS) ─────────────
+- name: Vérifier si lsb-release est disponible dans les dépôts
+  ansible.builtin.command:
+    cmd: apt-cache policy lsb-release
+  register: lsb_check
+  changed_when: false
+  failed_when: false
+
+- name: Corriger les dépôts Debian 13 minimal si nécessaire
+  when: "'Candidate: (none)' in lsb_check.stdout or 'Unable to locate' in lsb_check.stderr"
+  block:
+    - name: Écrire les dépôts Debian Trixie complets
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/debian.sources
+        content: |
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: trixie trixie-updates
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+          Types: deb
+          URIs: http://deb.debian.org/debian-security
+          Suites: trixie-security
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Nettoyer le sources.list principal
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list
+        content: "# Géré par Ansible — voir /etc/apt/sources.list.d/\n"
+        mode: "0644"
+
+    - name: Forcer la mise à jour du cache après correction des dépôts
+      ansible.builtin.apt:
+        update_cache: true
+
+# ── Installation des paquets de base ────────────────────────
 - name: Mettre à jour le cache apt
   ansible.builtin.apt:
     update_cache: true
@@ -27,10 +74,25 @@
     state: present
 
 - name: Configurer la locale fr_FR.UTF-8
-  ansible.builtin.locale_gen:
+  community.general.locale_gen:
     name: fr_FR.UTF-8
     state: present
 
+# ── Hostname du serveur ────────────────────────────────────
+- name: Configurer le hostname du serveur
+  ansible.builtin.hostname:
+    name: "{{ server_hostname | default(telegram_bot_server_name | default(omit)) }}"
+  when: server_hostname is defined or telegram_bot_server_name is defined
+
+- name: Mettre à jour /etc/hosts avec le hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1 {{ server_hostname | default(telegram_bot_server_name) }}"
+    state: present
+  when: server_hostname is defined or telegram_bot_server_name is defined
+
+# ── Création de l'utilisateur système ───────────────────────
 - name: Créer l utilisateur système
   ansible.builtin.user:
     name: "{{ system_user }}"
@@ -55,7 +117,7 @@
     group: "{{ system_user }}"
     mode: "0700"
 
-- name: Ajouter la clé SSH publique
+- name: Ajouter la clé SSH publique de déploiement
   ansible.builtin.copy:
     dest: "/home/{{ system_user }}/.ssh/authorized_keys"
     content: "{{ system_user_ssh_pubkey }}\n"

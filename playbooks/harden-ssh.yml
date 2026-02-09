@@ -1,13 +1,81 @@
 ---
 # ============================================================
-# harden-ssh.yml — Hardening SSH (playbook SÉPARÉ)
-# ⚠️  À exécuter APRÈS validation complète des services
+# harden-ssh.yml — Hardening SSH avec vérification de sécurité
+#
+# ⚠️  À exécuter APRÈS validation complète des services (verify.yml)
+#
+# Ce playbook :
+#   1. Vérifie que la connexion SSH par clé fonctionne (pré-vol)
+#   2. Applique le hardening (port custom, root désactivé, etc.)
+#   3. Ouvre le nouveau port dans UFW AVANT de fermer l'ancien
+#   4. Teste la connexion sur le nouveau port
+#   5. Si OK → ferme l'ancien port 22
+#   6. Si KO → rollback automatique (restaure sshd_config + port 22)
+#
+# CLÉS SSH :
+#   Ce playbook utilise la CLÉ PRIVÉE DE DÉPLOIEMENT (locale) pour
+#   se connecter au VPS. La même clé dont la partie publique a été
+#   copiée lors du bootstrap-ionos.sh.
+#
+# Usage :
+#   ansible-playbook playbooks/harden-ssh.yml \
+#     --vault-password-file .vault-pass \
+#     --private-key ~/.ssh/seko-vpn-deploy
 # ============================================================
-- name: Hardening SSH
+- name: Hardening SSH avec vérification
   hosts: all
   become: true
 
+  vars:
+    # Port SSH avant hardening (celui utilisé actuellement)
+    ssh_original_port: "{{ ansible_port | default(22) }}"
+
   tasks:
+    # ── Pré-vol : vérifications avant de toucher à SSH ──────
+    - name: "[PRÉ-VOL] Vérifier que l'utilisateur système existe"
+      ansible.builtin.command:
+        cmd: "id {{ system_user }}"
+      changed_when: false
+
+    - name: "[PRÉ-VOL] Vérifier que la clé SSH est en place"
+      ansible.builtin.stat:
+        path: "/home/{{ system_user }}/.ssh/authorized_keys"
+      register: authkeys_check
+
+    - name: "[PRÉ-VOL] Échec si pas de clé SSH"
+      ansible.builtin.fail:
+        msg: >
+          ARRÊT : Aucune clé SSH trouvée dans /home/{{ system_user }}/.ssh/authorized_keys.
+          Le hardening SSH désactive l'authentification par mot de passe.
+          Sans clé SSH, vous perdrez l'accès au serveur !
+          Exécutez d'abord le bootstrap ou vérifiez la clé de déploiement.
+      when: not authkeys_check.stat.exists
+
+    - name: "[PRÉ-VOL] Vérifier que sudo fonctionne sans mot de passe"
+      ansible.builtin.command:
+        cmd: "sudo -n whoami"
+      become: false
+      become_user: "{{ system_user }}"
+      changed_when: false
+      register: sudo_check
+      failed_when: "'root' not in sudo_check.stdout"
+
+    - name: "[PRÉ-VOL] Sauvegarder sshd_config actuel"
+      ansible.builtin.copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.pre-hardening
+        remote_src: true
+        mode: "0600"
+
+    # ── Ouvrir le nouveau port AVANT de modifier SSH ────────
+    - name: Ouvrir le port SSH custom dans UFW (avant changement)
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_custom_port }}"
+        proto: tcp
+        comment: "SSH custom port (hardening)"
+
+    # ── Appliquer le hardening SSH ──────────────────────────
     - name: Configurer sshd_config
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
@@ -23,7 +91,6 @@
         - { regexp: '^#?X11Forwarding', line: "X11Forwarding no" }
         - { regexp: '^#?MaxAuthTries', line: "MaxAuthTries 3" }
         - { regexp: '^#?AllowAgentForwarding', line: "AllowAgentForwarding no" }
-      notify: Restart sshd
 
     - name: Limiter l'accès SSH à l'utilisateur système
       ansible.builtin.lineinfile:
@@ -32,15 +99,68 @@
         line: "AllowUsers {{ system_user }}"
         state: present
         validate: "sshd -t -f %s"
-      notify: Restart sshd
 
-    - name: Mettre à jour le port UFW pour SSH
-      community.general.ufw:
-        rule: allow
+    - name: Valider la configuration SSH complète
+      ansible.builtin.command:
+        cmd: sshd -t
+      changed_when: false
+
+    - name: Redémarrer sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    # ── Vérification post-hardening ─────────────────────────
+    - name: Attendre 3 secondes que sshd redémarre
+      ansible.builtin.wait_for:
+        timeout: 3
+
+    - name: Vérifier que sshd écoute sur le nouveau port
+      ansible.builtin.wait_for:
         port: "{{ ssh_custom_port }}"
-        proto: tcp
-        comment: "SSH custom port"
+        host: "0.0.0.0"
+        timeout: 10
+      register: port_check
+      ignore_errors: true
 
+    - name: Vérifier la connexion SSH sur le nouveau port (test local)
+      ansible.builtin.command:
+        cmd: >
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5
+          -o PasswordAuthentication=no
+          -p {{ ssh_custom_port }}
+          {{ system_user }}@127.0.0.1
+          echo "SSH_OK"
+      become: false
+      register: ssh_test
+      changed_when: false
+      ignore_errors: true
+
+    # ── Rollback si échec ───────────────────────────────────
+    - name: "[ROLLBACK] Restaurer sshd_config si le test échoue"
+      when: port_check is failed or (ssh_test is failed and "'SSH_OK' not in ssh_test.stdout")
+      block:
+        - name: Restaurer la configuration SSH précédente
+          ansible.builtin.copy:
+            src: /etc/ssh/sshd_config.pre-hardening
+            dest: /etc/ssh/sshd_config
+            remote_src: true
+            mode: "0600"
+
+        - name: Redémarrer sshd avec l'ancienne config
+          ansible.builtin.service:
+            name: sshd
+            state: restarted
+
+        - name: Signaler l'échec du hardening
+          ansible.builtin.fail:
+            msg: >
+              ❌ ROLLBACK : Le hardening SSH a échoué.
+              sshd ne répond pas sur le port {{ ssh_custom_port }}.
+              La configuration précédente a été restaurée.
+              Le serveur est toujours accessible sur le port {{ ssh_original_port }}.
+
+    # ── Finalisation si succès ──────────────────────────────
     - name: Supprimer l'ancienne règle SSH port 22
       community.general.ufw:
         rule: allow
@@ -48,9 +168,27 @@
         proto: tcp
         delete: true
       failed_when: false
+      when: ssh_custom_port | string != "22"
 
-  handlers:
-    - name: Restart sshd
-      ansible.builtin.service:
-        name: sshd
-        state: restarted
+    - name: Supprimer le backup sshd_config
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.pre-hardening
+        state: absent
+
+    - name: Résumé du hardening SSH
+      ansible.builtin.debug:
+        msg:
+          - "══════════════════════════════════════════════"
+          - "  ✅ Hardening SSH terminé avec succès !"
+          - "══════════════════════════════════════════════"
+          - "  Port SSH       : {{ ssh_custom_port }}"
+          - "  Root login     : désactivé"
+          - "  Auth password  : désactivée"
+          - "  Utilisateur    : {{ system_user }} uniquement"
+          - ""
+          - "  ⚠️  Mettez à jour votre inventory/group_vars/all/vars.yml :"
+          - "     ansible_port: {{ ssh_custom_port }}"
+          - ""
+          - "  Pour tester depuis votre machine locale :"
+          - "    ssh -p {{ ssh_custom_port }} -i ~/.ssh/seko-vpn-deploy {{ system_user }}@{{ server_ip }}"
+          - "══════════════════════════════════════════════"

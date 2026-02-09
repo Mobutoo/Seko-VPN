@@ -1,38 +1,23 @@
 ---
-# ============================================================
-# vars.yml — Variables publiques du projet Seko-VPN
-# Utilisez ./scripts/wizard.sh pour générer ce fichier
-# ============================================================
-
-# --- Serveur ---
-server_ip: "CHANGER_MOI_IP"
-system_user: "srvadmin"
-system_user_ssh_pubkey: "CHANGER_MOI_SSH_PUBKEY"
-
-# --- Domaines ---
-domain_headscale: "hs.example.com"
-domain_headplane: "nga.example.com"
-domain_vaultwarden: "vault.example.com"
-domain_portainer: "portainer.example.com"
-domain_zerobyte: "zb.example.com"
-domain_uptime_kuma: "status.example.com"
-
-# --- Email et SSH ---
-acme_email: "admin@example.com"
-ssh_custom_port: 2222
-
-# --- CI mode ---
+# vars.yml — Généré par wizard.sh le 2026-02-09
+server_ip: "87.106.30.160"
+system_user: "mobuone"
+system_user_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGX60wjMX/3O1igvHTBlnq3lHVmQ1+1VZQduudw3D6M/ seko-vpn-deploy"
+domain_headscale: "na.ewutelo.cloud"
+domain_headplane: "seko.ewutelo.cloud"
+domain_vaultwarden: "fongola.ewutelo.cloud"
+domain_portainer: "pao.ewutelo.cloud"
+domain_zerobyte: "buku.ewutelo.cloud"
+domain_uptime_kuma: "misu.ewutelo.cloud"
+acme_email: "seko.mobutoo@gmail.com"
+ssh_custom_port: 804
 ci_mode: false
-
-# --- Versions ---
 headscale_version: "0.26.0"
 vaultwarden_version: "1.35.1-alpine"
 portainer_version: "lts"
 zerobyte_version: "v0.25"
 headplane_version: "latest"
 uptime_kuma_version: "latest"
-
-# --- Chemins ---
 base_deploy_path: "/opt/services"
 headscale_data_path: "{{ base_deploy_path }}/headscale"
 headplane_data_path: "{{ base_deploy_path }}/headplane"
@@ -42,8 +27,6 @@ zerobyte_data_path: "{{ base_deploy_path }}/zerobyte"
 uptime_kuma_data_path: "{{ base_deploy_path }}/uptime-kuma"
 caddy_data_path: "{{ base_deploy_path }}/caddy"
 telegram_bot_path: "{{ base_deploy_path }}/telegram-bot"
-
-# --- Monit ---
 monit_check_interval: 30
 monit_containers:
   - headscale
@@ -53,14 +36,8 @@ monit_containers:
   - zerobyte
   - caddy
   - uptime-kuma
-
-# --- Telegram Bot ---
-telegram_bot_server_name: "seko-vpn-01"
-
-# --- Alloy ---
+telegram_bot_server_name: "Seko"
 alloy_loki_url: ""
-
-# --- Hardening ---
 hardening_swap_size: "2G"
 hardening_journal_max_use: "500M"
 hardening_journal_max_retention: "30day"

@@ -1,0 +1,160 @@
+---
+# ============================================================
+# verify-ssh-hardening.yml — Contrôle post-hardening SSH
+#
+# Vérifie que le hardening SSH est correctement appliqué.
+# Peut être lancé indépendamment pour auditer l'état SSH.
+#
+# Usage (après hardening, sur le port custom) :
+#   ansible-playbook playbooks/verify-ssh-hardening.yml \
+#     --vault-password-file .vault-pass \
+#     --private-key ~/.ssh/seko-vpn-deploy
+# ============================================================
+- name: Vérification hardening SSH
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    checks_passed: 0
+    checks_total: 8
+
+  tasks:
+    # ── 1. Port SSH ─────────────────────────────────────────
+    - name: "[1/8] Vérifier le port SSH actif"
+      ansible.builtin.command:
+        cmd: ss -tlnp
+      register: ss_output
+      changed_when: false
+
+    - name: "[1/8] Confirmer que le port custom est en écoute"
+      ansible.builtin.assert:
+        that:
+          - "':' ~ ssh_custom_port | string in ss_output.stdout"
+        fail_msg: "❌ sshd ne semble pas écouter sur le port {{ ssh_custom_port }}"
+        success_msg: "✅ Port {{ ssh_custom_port }} en écoute"
+
+    # ── 2. Root login désactivé ─────────────────────────────
+    - name: "[2/8] Vérifier que root login est désactivé"
+      ansible.builtin.command:
+        cmd: grep -E "^PermitRootLogin" /etc/ssh/sshd_config
+      register: root_login
+      changed_when: false
+
+    - name: "[2/8] Confirmer PermitRootLogin no"
+      ansible.builtin.assert:
+        that:
+          - "'no' in root_login.stdout"
+        fail_msg: "❌ PermitRootLogin n'est pas 'no' : {{ root_login.stdout }}"
+        success_msg: "✅ Root login désactivé"
+
+    # ── 3. Authentification par mot de passe désactivée ─────
+    - name: "[3/8] Vérifier que l'auth par password est désactivée"
+      ansible.builtin.command:
+        cmd: grep -E "^PasswordAuthentication" /etc/ssh/sshd_config
+      register: pass_auth
+      changed_when: false
+
+    - name: "[3/8] Confirmer PasswordAuthentication no"
+      ansible.builtin.assert:
+        that:
+          - "'no' in pass_auth.stdout"
+        fail_msg: "❌ PasswordAuthentication n'est pas 'no' : {{ pass_auth.stdout }}"
+        success_msg: "✅ Authentification par mot de passe désactivée"
+
+    # ── 4. PubkeyAuthentication activée ─────────────────────
+    - name: "[4/8] Vérifier que l'auth par clé est activée"
+      ansible.builtin.command:
+        cmd: grep -E "^PubkeyAuthentication" /etc/ssh/sshd_config
+      register: pubkey_auth
+      changed_when: false
+
+    - name: "[4/8] Confirmer PubkeyAuthentication yes"
+      ansible.builtin.assert:
+        that:
+          - "'yes' in pubkey_auth.stdout"
+        fail_msg: "❌ PubkeyAuthentication n'est pas 'yes' : {{ pubkey_auth.stdout }}"
+        success_msg: "✅ Authentification par clé activée"
+
+    # ── 5. AllowUsers restreint ─────────────────────────────
+    - name: "[5/8] Vérifier AllowUsers"
+      ansible.builtin.command:
+        cmd: grep -E "^AllowUsers" /etc/ssh/sshd_config
+      register: allow_users
+      changed_when: false
+
+    - name: "[5/8] Confirmer que seul l'utilisateur système est autorisé"
+      ansible.builtin.assert:
+        that:
+          - "system_user in allow_users.stdout"
+        fail_msg: "❌ AllowUsers ne contient pas {{ system_user }} : {{ allow_users.stdout }}"
+        success_msg: "✅ AllowUsers restreint à {{ system_user }}"
+
+    # ── 6. MaxAuthTries ─────────────────────────────────────
+    - name: "[6/8] Vérifier MaxAuthTries"
+      ansible.builtin.command:
+        cmd: grep -E "^MaxAuthTries" /etc/ssh/sshd_config
+      register: max_tries
+      changed_when: false
+
+    - name: "[6/8] Confirmer MaxAuthTries <= 3"
+      ansible.builtin.assert:
+        that:
+          - "max_tries.stdout.split()[-1] | int <= 3"
+        fail_msg: "❌ MaxAuthTries trop élevé : {{ max_tries.stdout }}"
+        success_msg: "✅ MaxAuthTries = {{ max_tries.stdout.split()[-1] }}"
+
+    # ── 7. UFW — port custom ouvert, port 22 fermé ─────────
+    - name: "[7/8] Vérifier les règles UFW"
+      ansible.builtin.command:
+        cmd: ufw status verbose
+      register: ufw_status
+      changed_when: false
+
+    - name: "[7/8] Confirmer que le port custom est ouvert dans UFW"
+      ansible.builtin.assert:
+        that:
+          - "ssh_custom_port | string in ufw_status.stdout"
+        fail_msg: "❌ Port {{ ssh_custom_port }} absent des règles UFW"
+        success_msg: "✅ Port {{ ssh_custom_port }} ouvert dans UFW"
+
+    - name: "[7/8] Avertir si port 22 encore ouvert"
+      ansible.builtin.debug:
+        msg: "⚠️  Le port 22 est encore ouvert dans UFW. C'est normal si ssh_custom_port est 22."
+      when:
+        - ssh_custom_port | string != "22"
+        - "'22/tcp' in ufw_status.stdout"
+
+    # ── 8. Clé SSH de l'utilisateur ─────────────────────────
+    - name: "[8/8] Vérifier la présence de la clé SSH"
+      ansible.builtin.stat:
+        path: "/home/{{ system_user }}/.ssh/authorized_keys"
+      register: authkeys
+
+    - name: "[8/8] Confirmer que la clé SSH existe"
+      ansible.builtin.assert:
+        that:
+          - authkeys.stat.exists
+          - authkeys.stat.size > 0
+        fail_msg: "❌ Pas de clé SSH dans /home/{{ system_user }}/.ssh/authorized_keys"
+        success_msg: "✅ Clé SSH de déploiement présente"
+
+    # ── Résumé ──────────────────────────────────────────────
+    - name: Résumé de la vérification SSH
+      ansible.builtin.debug:
+        msg:
+          - "══════════════════════════════════════════════"
+          - "  ✅ Vérification hardening SSH terminée"
+          - "══════════════════════════════════════════════"
+          - "  Port SSH         : {{ ssh_custom_port }}"
+          - "  Root login       : désactivé"
+          - "  Auth password    : désactivée"
+          - "  Auth clé publique: activée"
+          - "  AllowUsers       : {{ system_user }}"
+          - "  MaxAuthTries     : ≤ 3"
+          - "  Clé SSH          : présente"
+          - "══════════════════════════════════════════════"
+          - ""
+          - "  Connexion depuis votre machine locale :"
+          - "    ssh -p {{ ssh_custom_port }} -i ~/.ssh/seko-vpn-deploy {{ system_user }}@{{ server_ip }}"
+          - "══════════════════════════════════════════════"

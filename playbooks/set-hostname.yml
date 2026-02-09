@@ -1,0 +1,40 @@
+---
+# ============================================================
+# set-hostname.yml — Change le hostname du VPS de production
+# Usage : ansible-playbook playbooks/set-hostname.yml \
+#           -e "server_hostname=seko-vpn-01" \
+#           --vault-password-file .vault-pass \
+#           --private-key ~/.ssh/seko-vpn-deploy
+# ============================================================
+- name: Configurer le hostname du serveur
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Vérifier que server_hostname est défini
+      ansible.builtin.assert:
+        that:
+          - server_hostname is defined
+          - server_hostname | length > 0
+        fail_msg: "Définissez server_hostname : -e 'server_hostname=seko-vpn-01'"
+
+    - name: Appliquer le hostname
+      ansible.builtin.hostname:
+        name: "{{ server_hostname }}"
+
+    - name: Mettre à jour /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1'
+        line: "127.0.1.1 {{ server_hostname }}"
+        state: present
+
+    - name: Afficher le résultat
+      ansible.builtin.command:
+        cmd: hostname
+      register: hostname_result
+      changed_when: false
+
+    - name: Confirmer le changement
+      ansible.builtin.debug:
+        msg: "Hostname configuré : {{ hostname_result.stdout }}"

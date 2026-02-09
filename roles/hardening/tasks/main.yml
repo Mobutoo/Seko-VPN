@@ -76,6 +76,7 @@
 - name: Créer le fichier swap
   ansible.builtin.command:
     cmd: "{{ item }}"
+  changed_when: false
   loop:
     - "fallocate -l {{ hardening_swap_size }} /swapfile"
     - "chmod 600 /swapfile"

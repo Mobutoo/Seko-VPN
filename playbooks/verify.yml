@@ -9,7 +9,8 @@
   tasks:
     - name: Vérifier les conteneurs Docker
       ansible.builtin.command:
-        cmd: docker ps --format "{{ '{{' }}.Names{{ '}}' }}: {{ '{{' }}.Status{{ '}}' }}"
+        cmd: >-
+           docker ps --format "{{ '{{' }}.Names{{ '}}' }}: {{ '{{' }}.Status{{ '}}' }}"
       register: verify_docker_ps
       changed_when: false
 

@@ -16,19 +16,19 @@ error()   { echo -e "  ${RED}❌ $1${NC}"; }
 ask() {
     local prompt="$1" default="${2:-}" result
     if [[ -n "$default" ]]; then
-        echo -ne "  ${BOLD}$prompt${NC} [${CYAN}$default${NC}] : "; read -r result
+        echo -ne "  ${BOLD}$prompt${NC} [${CYAN}$default${NC}] : " >&2; read -r result
         echo "${result:-$default}"
     else
-        echo -ne "  ${BOLD}$prompt${NC} : "; read -r result
-        while [[ -z "$result" ]]; do error "Ce champ est obligatoire"; echo -ne "  ${BOLD}$prompt${NC} : "; read -r result; done
+        echo -ne "  ${BOLD}$prompt${NC} : " >&2; read -r result
+        while [[ -z "$result" ]]; do error "Ce champ est obligatoire" >&2; echo -ne "  ${BOLD}$prompt${NC} : " >&2; read -r result; done
         echo "$result"
     fi
 }
 
 ask_secret() {
     local prompt="$1" result
-    echo -ne "  ${BOLD}$prompt${NC} : "; read -rs result; echo ""
-    while [[ -z "$result" ]]; do error "Ce champ est obligatoire"; echo -ne "  ${BOLD}$prompt${NC} : "; read -rs result; echo ""; done
+    echo -ne "  ${BOLD}$prompt${NC} : " >&2; read -rs result; echo "" >&2
+    while [[ -z "$result" ]]; do error "Ce champ est obligatoire" >&2; echo -ne "  ${BOLD}$prompt${NC} : " >&2; read -rs result; echo "" >&2; done
     echo "$result"
 }
 
@@ -71,7 +71,7 @@ collect_info() {
 
     header "Configuration Telegram"
     info "Créez un bot via @BotFather sur Telegram pour obtenir le token."
-    TELEGRAM_TOKEN=$(ask_secret "Token du bot Telegram"); TELEGRAM_CHAT_ID=$(ask "Chat ID Telegram")
+    TELEGRAM_TOKEN=$(ask "Token du bot Telegram"); TELEGRAM_CHAT_ID=$(ask "Chat ID Telegram")
 
     header "Identification serveur"
     SERVER_NAME=$(ask "Nom du serveur (pour le bot Telegram)" "seko-vpn-01")
@@ -161,7 +161,7 @@ all:
       ansible_host: ${SERVER_IP}
       ansible_user: ${SYSTEM_USER}
       ansible_port: 22
-      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_private_key_file: ${SSH_PUBKEY_PATH%.pub}
 EOF
     success "hosts.yml généré"
 }

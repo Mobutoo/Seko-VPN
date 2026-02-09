@@ -1,0 +1,339 @@
+---
+# ============================================================
+# ci-cd.yml — Pipeline CI/CD Seko-VPN V3
+# 4 stages : Lint → Molecule → Integration (Hetzner) → Deploy (IONOS)
+# ============================================================
+name: CI/CD Pipeline
+
+"on":
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# ── Variables globales ────────────────────────────────────────
+env:
+  PYTHON_VERSION: "3.12"
+  # Type de serveur Hetzner CI (modifiable si la gamme change)
+  HCLOUD_SERVER_TYPE: "cx23"
+  HCLOUD_IMAGE: "debian-13"
+  # Fallback datacenters : Allemagne (priorité) → Finlande
+  HCLOUD_DATACENTERS: "fsn1 nbg1 hel1"
+  CI_SERVER_NAME: "seko-vpn-ci-${{ github.run_id }}"
+
+# Empêche les exécutions parallèles sur le même environnement
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Stage 1 : Lint (yamllint + ansible-lint)
+  # ──────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint .
+
+      - name: Run ansible-lint
+        run: ansible-lint
+
+  # ──────────────────────────────────────────────
+  # Stage 2 : Molecule (matrice 14 rôles)
+  # ──────────────────────────────────────────────
+  molecule:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        role:
+          - common
+          - security
+          - docker
+          - hardening
+          - caddy
+          - headscale
+          - headplane
+          - vaultwarden
+          - portainer
+          - zerobyte
+          - uptime_kuma
+          - monit
+          - alloy
+          - telegram_bot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Run Molecule — ${{ matrix.role }}
+        working-directory: roles/${{ matrix.role }}
+        run: molecule test
+        env:
+          MOLECULE_VERBOSITY: 1
+
+  # ──────────────────────────────────────────────
+  # Stage 3 : Integration (VM Hetzner éphémère)
+  # Uniquement sur push main ou PR vers main
+  # ──────────────────────────────────────────────
+  integration:
+    needs: molecule
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt hcloud
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Install hcloud CLI
+        run: |
+          curl -fsSL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin hcloud
+          hcloud version
+
+      - name: Generate ephemeral SSH keypair for CI
+        run: |
+          ssh-keygen -t ed25519 -f ~/.ssh/ci_key -N "" -C "ci-ephemeral"
+          echo "CI_SSH_PUBKEY=$(cat ~/.ssh/ci_key.pub)" >> "$GITHUB_ENV"
+
+      - name: Create Hetzner CI server (with datacenter fallback)
+        id: create_server
+        run: |
+          set -euo pipefail
+
+          # Enregistrer la clé SSH dans Hetzner
+          hcloud ssh-key create --name "$CI_SERVER_NAME" \
+            --public-key "$(cat ~/.ssh/ci_key.pub)" 2>/dev/null || true
+
+          # Tenter la création avec fallback datacenters
+          CREATED=false
+          for DC in $HCLOUD_DATACENTERS; do
+            echo "🔄 Tentative de création dans $DC..."
+            if hcloud server create \
+              --name "$CI_SERVER_NAME" \
+              --type "$HCLOUD_SERVER_TYPE" \
+              --image "$HCLOUD_IMAGE" \
+              --datacenter "$DC" \
+              --ssh-key "$CI_SERVER_NAME" \
+              --label "purpose=ci,run=${{ github.run_id }}" \
+              2>&1; then
+              CREATED=true
+              echo "✅ Serveur créé dans $DC"
+              echo "datacenter=$DC" >> "$GITHUB_OUTPUT"
+              break
+            else
+              echo "⚠️ Échec dans $DC, fallback..."
+            fi
+          done
+
+          if [ "$CREATED" = false ]; then
+            echo "❌ Impossible de créer le serveur dans aucun datacenter"
+            exit 1
+          fi
+
+          # Récupérer l'IP
+          CI_IP=$(hcloud server ip "$CI_SERVER_NAME")
+          echo "ci_ip=$CI_IP" >> "$GITHUB_OUTPUT"
+          echo "CI_IP=$CI_IP" >> "$GITHUB_ENV"
+          echo "📍 Serveur CI : $CI_IP (datacenter: $(hcloud server describe "$CI_SERVER_NAME" -o format='{{.Datacenter.Name}}'))"
+
+      - name: Wait for SSH readiness
+        run: |
+          echo "⏳ Attente SSH sur $CI_IP..."
+          for i in $(seq 1 30); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+              -i ~/.ssh/ci_key root@"$CI_IP" "echo ok" 2>/dev/null; then
+              echo "✅ SSH prêt après ${i}0 secondes"
+              break
+            fi
+            sleep 10
+          done
+
+      - name: Fix Debian 13 minimal repos on CI server
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ci_key root@"$CI_IP" bash <<'FIXREPOS'
+          set -euo pipefail
+          if ! apt-cache policy lsb-release 2>/dev/null | grep -q "Candidate:"; then
+            cat > /etc/apt/sources.list.d/debian.sources <<DCONF
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: trixie trixie-updates
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+          Types: deb
+          URIs: http://deb.debian.org/debian-security
+          Suites: trixie-security
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          DCONF
+            apt-get update -qq
+          fi
+          FIXREPOS
+
+      - name: Write CI inventory
+        run: |
+          mkdir -p /tmp/ci-inventory/group_vars/all
+          cat > /tmp/ci-inventory/hosts.yml <<EOF
+          ---
+          all:
+            hosts:
+              ci-server:
+                ansible_host: "$CI_IP"
+                ansible_user: root
+                ansible_ssh_private_key_file: ~/.ssh/ci_key
+                ansible_port: 22
+          EOF
+
+      - name: Write CI vault (mock secrets)
+        run: |
+          cat > /tmp/ci-inventory/group_vars/all/vault.yml <<EOF
+          ---
+          vault_system_user_password: "$(openssl rand -base64 24)"
+          vault_vaultwarden_admin_token: "$(openssl rand -base64 32)"
+          vault_headplane_cookie_secret: "$(openssl rand -base64 24 | head -c 32)"
+          vault_zerobyte_app_secret: "$(openssl rand -hex 32)"
+          vault_telegram_bot_token: "0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          vault_telegram_chat_id: "000000000"
+          vault_monit_password: "$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+          EOF
+
+      - name: Run full site.yml in CI mode
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -i /tmp/ci-inventory/hosts.yml \
+            -e "@/tmp/ci-inventory/group_vars/all/vault.yml" \
+            -e "@tests/ci-vars.yml" \
+            -e "ci_mode=true" \
+            -e "system_user=citest" \
+            -e "system_user_ssh_pubkey=$(cat ~/.ssh/ci_key.pub)" \
+            -e "server_ip=$CI_IP" \
+            --diff
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "false"
+          ANSIBLE_FORCE_COLOR: "true"
+
+      - name: Run verify.yml
+        run: |
+          ansible-playbook playbooks/verify.yml \
+            -i /tmp/ci-inventory/hosts.yml \
+            -e "@/tmp/ci-inventory/group_vars/all/vault.yml" \
+            -e "@tests/ci-vars.yml" \
+            -e "ci_mode=true" \
+            -e "system_user=citest" \
+            -e "server_ip=$CI_IP" \
+            --diff
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "false"
+          ANSIBLE_FORCE_COLOR: "true"
+
+      # ⚠️ CLEANUP — Toujours exécuté, même en cas d'échec
+      - name: Cleanup Hetzner resources
+        if: always()
+        run: |
+          echo "🧹 Nettoyage du serveur CI..."
+          hcloud server delete "$CI_SERVER_NAME" 2>/dev/null || true
+          hcloud ssh-key delete "$CI_SERVER_NAME" 2>/dev/null || true
+          echo "✅ Ressources Hetzner supprimées"
+
+  # ──────────────────────────────────────────────
+  # Stage 4 : Deploy en production (IONOS)
+  # Uniquement sur main + après approbation manuelle
+  # ──────────────────────────────────────────────
+  deploy:
+    needs: integration
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Setup deploy SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Write vault password file
+        run: |
+          echo "${{ secrets.VAULT_PASSWORD }}" > /tmp/.vault-pass
+          chmod 600 /tmp/.vault-pass
+
+      - name: Deploy to production
+        run: |
+          ansible-playbook playbooks/site.yml \
+            --vault-password-file /tmp/.vault-pass \
+            --private-key ~/.ssh/deploy_key \
+            --diff
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "false"
+          ANSIBLE_FORCE_COLOR: "true"
+
+      - name: Run production verification
+        run: |
+          ansible-playbook playbooks/verify.yml \
+            --vault-password-file /tmp/.vault-pass \
+            --private-key ~/.ssh/deploy_key
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "false"
+          ANSIBLE_FORCE_COLOR: "true"
+
+      - name: Cleanup secrets
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key /tmp/.vault-pass
