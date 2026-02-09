@@ -61,6 +61,7 @@
     name: chrony
     state: started
     enabled: true
+  when: ansible_virtualization_type != "docker"
 
 # --- Swap conditionnel ---
 - name: Vérifier la RAM disponible

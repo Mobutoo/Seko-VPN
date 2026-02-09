@@ -3,3 +3,4 @@
   ansible.builtin.service:
     name: telegram-bot
     state: restarted
+  when: ansible_virtualization_type != "docker"

@@ -62,6 +62,7 @@
     name: docker
     state: started
     enabled: true
+  when: ansible_virtualization_type != "docker"
 
 - name: Créer le réseau Docker proxy-net
   community.docker.docker_network:

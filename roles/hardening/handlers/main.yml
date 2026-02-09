@@ -3,11 +3,13 @@
   ansible.builtin.service:
     name: systemd-journald
     state: restarted
+  when: ansible_virtualization_type != "docker"
 
 - name: Restart docker
   ansible.builtin.service:
     name: docker
     state: restarted
+  when: ansible_virtualization_type != "docker"
 
 - name: Reload systemd
   ansible.builtin.systemd:

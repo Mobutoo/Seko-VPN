@@ -3,6 +3,7 @@
   ansible.builtin.service:
     name: monit
     state: restarted
+  when: ansible_virtualization_type != "docker"
 
 - name: Reload monit
   ansible.builtin.command:

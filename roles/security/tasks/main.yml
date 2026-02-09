@@ -63,6 +63,7 @@
     name: fail2ban
     state: started
     enabled: true
+  when: ansible_virtualization_type != "docker"
 
 - name: Configurer sysctl de sécurité
   ansible.posix.sysctl:
