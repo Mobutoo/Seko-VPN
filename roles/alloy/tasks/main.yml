@@ -1,0 +1,47 @@
+---
+- name: Installer les prérequis pour le dépôt Grafana
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - gnupg
+    state: present
+
+- name: Ajouter la clé GPG Grafana
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/grafana.gpg
+    creates: /usr/share/keyrings/grafana.gpg
+
+- name: Ajouter le dépôt Grafana
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    content: "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\n"
+    mode: "0644"
+
+- name: Mettre à jour apt
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Installer Grafana Alloy
+  ansible.builtin.apt:
+    name: alloy
+    state: present
+
+- name: Créer le répertoire de logs Alloy
+  ansible.builtin.file:
+    path: /var/log/alloy
+    state: directory
+    mode: "0755"
+
+- name: Déployer la configuration Alloy
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    mode: "0644"
+  notify: Restart alloy
+
+- name: Activer et démarrer Alloy
+  ansible.builtin.service:
+    name: alloy
+    state: started
+    enabled: true

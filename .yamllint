@@ -1,29 +1,35 @@
 ---
+# ============================================================
+# .yamllint — Configuration yamllint compatible ansible-lint 26+
+# ============================================================
 extends: default
+
+ignore:
+  - inventory/group_vars/all/vault.yml
+  - .venv/
+  - .molecule/
 
 rules:
   line-length:
     max: 200
     level: warning
   truthy:
-    allowed-values: ["true", "false", "yes", "no", "on"]
+    allowed-values: ["true", "false", "yes", "no"]
   comments:
+    require-starting-space: true
     min-spaces-from-content: 1
-    level: warning
-  comments-indentation:
-    level: warning
-  document-start:
-    present: true
-    level: warning
+  comments-indentation: false
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
   indentation:
     spaces: 2
     indent-sequences: true
+  document-start:
+    present: true
   braces:
+    min-spaces-inside: 0
     max-spaces-inside: 1
-    level: warning
-
-ignore:
-  - .venv/
-  - .venv-ci/
-  - .molecule/
-  - "*.tar.gz"
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0

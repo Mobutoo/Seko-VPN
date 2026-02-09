@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    telegram_bot_server_name: "ci-test-01"
+    telegram_bot_path: "/opt/services/telegram-bot"
+    base_deploy_path: "/opt/services"
+    vault_telegram_bot_token: "123456:ABC-DEF-test-token"
+    vault_telegram_chat_id: "123456789"
+  roles:
+    - role: telegram_bot

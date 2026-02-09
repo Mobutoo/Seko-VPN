@@ -1,0 +1,16 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    caddy_data_path: "/opt/services/caddy"
+    domain_headscale: "hs.ci-test.local"
+    domain_headplane: "nga.ci-test.local"
+    domain_vaultwarden: "vault.ci-test.local"
+    domain_portainer: "portainer.ci-test.local"
+    domain_zerobyte: "zb.ci-test.local"
+    domain_uptime_kuma: "status.ci-test.local"
+    acme_email: "ci@test.local"
+    ci_mode: true
+  roles:
+    - role: caddy

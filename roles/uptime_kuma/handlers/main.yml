@@ -1,0 +1,7 @@
+---
+- name: Restart uptime-kuma
+  community.docker.docker_compose_v2:
+    project_src: "{{ uptime_kuma_data_path }}"
+    state: restarted
+    services:
+      - uptime-kuma

@@ -1,0 +1,9 @@
+# /etc/systemd/system/docker-prune.service — Géré par Ansible
+[Unit]
+Description=Docker system prune hebdomadaire
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker system prune -af --filter "until=168h"

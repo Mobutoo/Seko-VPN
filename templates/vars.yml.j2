@@ -1,0 +1,35 @@
+---
+# vars.yml — Généré par wizard.sh
+server_ip: "{{ server_ip }}"
+system_user: "{{ system_user }}"
+system_user_ssh_pubkey: "{{ ssh_pubkey }}"
+domain_headscale: "{{ sub_headscale }}.{{ domain }}"
+domain_headplane: "{{ sub_headplane }}.{{ domain }}"
+domain_vaultwarden: "{{ sub_vaultwarden }}.{{ domain }}"
+domain_portainer: "{{ sub_portainer }}.{{ domain }}"
+domain_zerobyte: "{{ sub_zerobyte }}.{{ domain }}"
+domain_uptime_kuma: "{{ sub_uptime_kuma }}.{{ domain }}"
+acme_email: "{{ acme_email }}"
+ssh_custom_port: {{ ssh_port }}
+ci_mode: false
+headscale_version: "0.26.0"
+vaultwarden_version: "1.35.1-alpine"
+portainer_version: "lts"
+zerobyte_version: "v0.25"
+headplane_version: "latest"
+uptime_kuma_version: "latest"
+base_deploy_path: "/opt/services"
+monit_check_interval: 30
+monit_containers:
+  - headscale
+  - headplane
+  - vaultwarden
+  - portainer
+  - zerobyte
+  - caddy
+  - uptime-kuma
+telegram_bot_server_name: "{{ server_name }}"
+alloy_loki_url: ""
+hardening_swap_size: "2G"
+hardening_journal_max_use: "500M"
+hardening_journal_max_retention: "30day"

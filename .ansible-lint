@@ -1,11 +1,18 @@
 ---
+# ============================================================
+# .ansible-lint — Profil production + skips ciblés
+# ============================================================
 profile: production
 
 skip_list:
-  # verify.yml utilise 'command' pour docker ps — acceptable dans les tests
+  - var-naming[no-role-prefix]
   - command-instead-of-module
+
+warn_list:
+  - name[template]
 
 exclude_paths:
   - .venv/
-  - .venv-ci/
   - .molecule/
+  - .git/
+  - tests/

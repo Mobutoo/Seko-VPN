@@ -1,0 +1,78 @@
+# Caddyfile — Géré par Ansible (6 vhosts)
+{% if ci_mode | default(false) %}
+{
+    local_certs
+    skip_install_trust
+}
+{% else %}
+{
+    email {{ acme_email }}
+}
+{% endif %}
+
+# --- Headscale (VPN WireGuard) ---
+{{ domain_headscale }} {
+    reverse_proxy headscale:8080
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+}
+
+# --- Headplane (UI VPN - distroless) ---
+{{ domain_headplane }} {
+    redir / /admin permanent
+    reverse_proxy headplane:3000
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
+# --- Vaultwarden (Mots de passe) ---
+{{ domain_vaultwarden }} {
+    reverse_proxy vaultwarden:80
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
+# --- Portainer (UI Docker) ---
+{{ domain_portainer }} {
+    reverse_proxy portainer:9000
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+}
+
+# --- Zerobyte (Sauvegardes) ---
+{{ domain_zerobyte }} {
+    reverse_proxy zerobyte:4096
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
+# --- Uptime Kuma (Monitoring HTTP) ---
+{{ domain_uptime_kuma }} {
+    reverse_proxy uptime-kuma:3001
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}

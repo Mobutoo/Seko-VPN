@@ -1,0 +1,21 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier que l utilisateur existe
+      ansible.builtin.command:
+        cmd: id testuser
+      register: common_user_check
+      changed_when: false
+
+    - name: Vérifier le répertoire de base
+      ansible.builtin.stat:
+        path: /opt/services
+      register: common_base_dir
+
+    - name: Valider le répertoire de base
+      ansible.builtin.assert:
+        that:
+          - common_base_dir.stat.exists
+          - common_base_dir.stat.isdir

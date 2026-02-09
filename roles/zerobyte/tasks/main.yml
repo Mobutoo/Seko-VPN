@@ -1,0 +1,17 @@
+---
+- name: Créer le répertoire Zerobyte
+  ansible.builtin.file:
+    path: "{{ zerobyte_data_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Déployer le docker-compose Zerobyte
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ zerobyte_data_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Démarrer Zerobyte
+  community.docker.docker_compose_v2:
+    project_src: "{{ zerobyte_data_path }}"
+    state: present

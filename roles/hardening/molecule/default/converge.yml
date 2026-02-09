@@ -1,0 +1,16 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    hardening_swap_size: "2G"
+    hardening_journal_max_use: "500M"
+    hardening_journal_max_retention: "30day"
+  pre_tasks:
+    - name: Installer Docker pour le timer prune
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+  roles:
+    - role: hardening

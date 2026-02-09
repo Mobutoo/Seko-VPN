@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    docker_log_max_size: "50m"
+    docker_log_max_file: "3"
+  roles:
+    - role: docker

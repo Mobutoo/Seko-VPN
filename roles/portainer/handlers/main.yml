@@ -1,0 +1,7 @@
+---
+- name: Restart portainer
+  community.docker.docker_compose_v2:
+    project_src: "{{ portainer_data_path }}"
+    state: restarted
+    services:
+      - portainer

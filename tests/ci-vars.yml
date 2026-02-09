@@ -1,0 +1,14 @@
+---
+# ============================================================
+# ci-vars.yml — Variables pour le pipeline CI
+# Domaines fictifs, ci_mode activé
+# ============================================================
+ci_mode: true
+domain_headscale: "hs.ci-test.local"
+domain_headplane: "nga.ci-test.local"
+domain_vaultwarden: "vault.ci-test.local"
+domain_portainer: "portainer.ci-test.local"
+domain_zerobyte: "zb.ci-test.local"
+domain_uptime_kuma: "status.ci-test.local"
+acme_email: "ci@test.local"
+telegram_bot_server_name: "ci-test-01"

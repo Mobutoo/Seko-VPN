@@ -1,0 +1,9 @@
+# Monitoring système — Géré par Ansible
+check system $HOST
+    if cpu usage > 90% for 5 cycles then exec "/etc/monit/telegram-alert.sh 'CPU > 90%'"
+    if memory usage > 85% for 5 cycles then exec "/etc/monit/telegram-alert.sh 'RAM > 85%'"
+    if swap usage > 50% then exec "/etc/monit/telegram-alert.sh 'SWAP > 50%'"
+
+check filesystem rootfs with path /
+    if space usage > 85% then exec "/etc/monit/telegram-alert.sh 'Disque > 85%'"
+    if space usage > 95% then exec "/etc/monit/telegram-alert.sh 'CRITIQUE: Disque > 95%'"

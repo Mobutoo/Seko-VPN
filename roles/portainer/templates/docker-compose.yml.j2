@@ -1,0 +1,20 @@
+# docker-compose.yml Portainer — Géré par Ansible
+services:
+  portainer:
+    image: "portainer/portainer-ce:{{ portainer_version }}"
+    container_name: portainer
+    restart: unless-stopped
+    expose:
+      - "9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
+
+volumes:
+  portainer_data:

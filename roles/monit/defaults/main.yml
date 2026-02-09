@@ -1,0 +1,12 @@
+---
+monit_check_interval: 30
+monit_containers:
+  - headscale
+  - headplane
+  - vaultwarden
+  - portainer
+  - zerobyte
+  - caddy
+  - uptime-kuma
+base_deploy_path: "/opt/services"
+telegram_bot_server_name: "seko-vpn-01"

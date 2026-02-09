@@ -1,0 +1,55 @@
+// config.alloy — Géré par Ansible
+// Collecteur de logs/métriques Grafana Alloy
+
+// --- Source : logs Docker ---
+local.file_match "docker_logs" {
+    path_targets = [
+        {__path__ = "/var/log/*.log"},
+    ]
+}
+
+loki.source.file "docker" {
+    targets    = local.file_match.docker_logs.targets
+    forward_to = [loki.process.default.receiver]
+}
+
+// --- Source : journal systemd ---
+loki.source.journal "systemd" {
+    forward_to = [loki.process.default.receiver]
+    labels     = {
+        job = "systemd-journal",
+    }
+}
+
+// --- Processing ---
+loki.process "default" {
+    stage.static_labels {
+        values = {
+            hostname = env("HOSTNAME"),
+        }
+    }
+{% if alloy_loki_url | default('') | length > 0 %}
+    forward_to = [loki.write.default.receiver]
+{% else %}
+    // Loki désactivé — les logs sont collectés mais pas envoyés
+    // Pour activer : définir alloy_loki_url dans vars.yml
+    forward_to = []
+{% endif %}
+}
+
+{% if alloy_loki_url | default('') | length > 0 %}
+// --- Destination : Loki ---
+loki.write "default" {
+    endpoint {
+        url = "{{ alloy_loki_url }}"
+    }
+}
+{% else %}
+// --- Loki désactivé ---
+// Décommentez et configurez alloy_loki_url pour activer :
+// loki.write "default" {
+//     endpoint {
+//         url = "http://loki.example.com:3100/loki/api/v1/push"
+//     }
+// }
+{% endif %}

@@ -1,0 +1,3 @@
+---
+uptime_kuma_version: "latest"
+uptime_kuma_data_path: "/opt/services/uptime-kuma"

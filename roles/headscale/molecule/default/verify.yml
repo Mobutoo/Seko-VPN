@@ -1,0 +1,25 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier le conteneur Headscale
+      ansible.builtin.command:
+        cmd: docker ps --filter name=headscale --format "{{ '{{' }}.Status{{ '}}' }}"
+      register: headscale_check
+      changed_when: false
+
+    - name: Valider Headscale
+      ansible.builtin.assert:
+        that:
+          - "'Up' in headscale_check.stdout"
+
+    - name: Vérifier la config Headscale
+      ansible.builtin.stat:
+        path: /opt/services/headscale/config/config.yaml
+      register: headscale_config
+
+    - name: Valider la config
+      ansible.builtin.assert:
+        that:
+          - headscale_config.stat.exists

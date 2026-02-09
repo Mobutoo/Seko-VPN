@@ -1,0 +1,56 @@
+---
+# ============================================================
+# harden-ssh.yml — Hardening SSH (playbook SÉPARÉ)
+# ⚠️  À exécuter APRÈS validation complète des services
+# ============================================================
+- name: Hardening SSH
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Configurer sshd_config
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+        validate: "sshd -t -f %s"
+      loop:
+        - { regexp: '^#?Port ', line: "Port {{ ssh_custom_port }}" }
+        - { regexp: '^#?PermitRootLogin', line: "PermitRootLogin no" }
+        - { regexp: '^#?PasswordAuthentication', line: "PasswordAuthentication no" }
+        - { regexp: '^#?PubkeyAuthentication', line: "PubkeyAuthentication yes" }
+        - { regexp: '^#?X11Forwarding', line: "X11Forwarding no" }
+        - { regexp: '^#?MaxAuthTries', line: "MaxAuthTries 3" }
+        - { regexp: '^#?AllowAgentForwarding', line: "AllowAgentForwarding no" }
+      notify: Restart sshd
+
+    - name: Limiter l'accès SSH à l'utilisateur système
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?AllowUsers'
+        line: "AllowUsers {{ system_user }}"
+        state: present
+        validate: "sshd -t -f %s"
+      notify: Restart sshd
+
+    - name: Mettre à jour le port UFW pour SSH
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_custom_port }}"
+        proto: tcp
+        comment: "SSH custom port"
+
+    - name: Supprimer l'ancienne règle SSH port 22
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        delete: true
+      failed_when: false
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted

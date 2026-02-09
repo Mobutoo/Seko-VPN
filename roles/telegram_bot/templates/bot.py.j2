@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""
+Bot Telegram interactif — Seko-VPN
+Commandes : /status /containers /disk /logs /restart /uptime /help
+"""
+import asyncio
+import logging
+import os
+import subprocess
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+
+# --- Configuration ---
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+ALLOWED_IDS = [int(x.strip()) for x in os.environ.get("ALLOWED_CHAT_IDS", "").split(",") if x.strip()]
+SERVER = os.environ.get("SERVER_NAME", "seko-vpn")
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+# Stockage des confirmations de restart en attente
+pending_restarts = {}
+
+
+def authorized(func):
+    """Décorateur pour vérifier les chat IDs autorisés."""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_chat.id not in ALLOWED_IDS:
+            await update.message.reply_text("⛔ Non autorisé.")
+            return
+        return await func(update, context)
+    return wrapper
+
+
+def run_cmd(cmd: str, timeout: int = 30) -> str:
+    """Exécute une commande et retourne la sortie."""
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout
+        )
+        return result.stdout.strip() or result.stderr.strip() or "(pas de sortie)"
+    except subprocess.TimeoutExpired:
+        return "⏰ Timeout"
+    except Exception as e:
+        return f"❌ Erreur: {e}"
+
+
+@authorized
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche le résumé Monit."""
+    output = run_cmd("monit summary 2>/dev/null || echo 'Monit indisponible'")
+    await update.message.reply_text(f"[{SERVER}] 📊 Monit Summary\n{'─' * 25}\n{output}")
+
+
+@authorized
+async def cmd_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Liste les conteneurs Docker."""
+    output = run_cmd('docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"')
+    await update.message.reply_text(f"[{SERVER}] 🐳 Conteneurs\n{'─' * 25}\n{output}")
+
+
+@authorized
+async def cmd_disk(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche l'utilisation disque."""
+    output = run_cmd("df -h --output=target,pcent,size,avail | head -10")
+    await update.message.reply_text(f"[{SERVER}] 💾 Disque\n{'─' * 25}\n{output}")
+
+
+@authorized
+async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche les 20 dernières lignes de logs d'un service."""
+    if not context.args:
+        await update.message.reply_text(f"[{SERVER}] Usage: /logs <service>\nExemple: /logs headscale")
+        return
+    service = context.args[0]
+    # Essayer Docker d'abord, puis journalctl
+    output = run_cmd(f"docker logs --tail 20 {service} 2>/dev/null")
+    if "No such container" in output or "Error" in output:
+        output = run_cmd(f"journalctl -u {service} -n 20 --no-pager 2>/dev/null")
+    # Tronquer si trop long
+    if len(output) > 3500:
+        output = output[:3500] + "\n... (tronqué)"
+    await update.message.reply_text(f"[{SERVER}] 📋 Logs {service}\n{'─' * 25}\n{output}")
+
+
+@authorized
+async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Demande confirmation avant de redémarrer un service."""
+    if not context.args:
+        await update.message.reply_text(f"[{SERVER}] Usage: /restart <service>")
+        return
+    service = context.args[0]
+    chat_id = update.effective_chat.id
+    pending_restarts[chat_id] = service
+    await update.message.reply_text(
+        f"[{SERVER}] ⚠️ Confirmer le redémarrage de '{service}' ?\n"
+        f"Envoyez /restart_confirm {service} pour confirmer."
+    )
+
+
+@authorized
+async def cmd_restart_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirme et exécute le redémarrage."""
+    chat_id = update.effective_chat.id
+    if not context.args:
+        await update.message.reply_text(f"[{SERVER}] Usage: /restart_confirm <service>")
+        return
+    service = context.args[0]
+    if chat_id not in pending_restarts or pending_restarts[chat_id] != service:
+        await update.message.reply_text(f"[{SERVER}] ❌ Pas de redémarrage en attente pour '{service}'.")
+        return
+    del pending_restarts[chat_id]
+    await update.message.reply_text(f"[{SERVER}] 🔄 Redémarrage de '{service}'...")
+    # Essayer Docker d'abord, puis systemctl
+    output = run_cmd(f"docker restart {service} 2>/dev/null")
+    if "No such container" in output or "Error" in output:
+        output = run_cmd(f"systemctl restart {service} 2>/dev/null && echo 'OK' || echo 'ERREUR'")
+    await update.message.reply_text(f"[{SERVER}] ✅ Résultat: {output}")
+
+
+@authorized
+async def cmd_uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Affiche l'uptime du serveur."""
+    output = run_cmd("uptime -p")
+    load = run_cmd("cat /proc/loadavg")
+    await update.message.reply_text(f"[{SERVER}] ⏱ Uptime\n{'─' * 25}\n{output}\nLoad: {load}")
+
+
+@authorized
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Liste des commandes disponibles."""
+    help_text = f"""[{SERVER}] 🤖 Commandes disponibles
+{'─' * 25}
+/status — Résumé Monit (état des services)
+/containers — Liste des conteneurs Docker
+/disk — Utilisation disque
+/logs <service> — 20 dernières lignes de logs
+/restart <service> — Redémarrer (avec confirmation)
+/uptime — Uptime serveur + charge
+/help — Cette aide"""
+    await update.message.reply_text(help_text)
+
+
+def main():
+    """Point d'entrée du bot."""
+    if not TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN non défini !")
+        return
+    if not ALLOWED_IDS:
+        logger.error("ALLOWED_CHAT_IDS non défini !")
+        return
+
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("containers", cmd_containers))
+    app.add_handler(CommandHandler("disk", cmd_disk))
+    app.add_handler(CommandHandler("logs", cmd_logs))
+    app.add_handler(CommandHandler("restart", cmd_restart))
+    app.add_handler(CommandHandler("restart_confirm", cmd_restart_confirm))
+    app.add_handler(CommandHandler("uptime", cmd_uptime))
+    app.add_handler(CommandHandler("help", cmd_help))
+
+    logger.info(f"Bot démarré pour le serveur [{SERVER}]")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()

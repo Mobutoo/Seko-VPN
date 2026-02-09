@@ -1,0 +1,23 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    monit_check_interval: 30
+    monit_containers:
+      - headscale
+      - vaultwarden
+      - caddy
+    vault_monit_password: "TestMonitPass1"
+    vault_telegram_bot_token: "123456:ABC-DEF"
+    vault_telegram_chat_id: "123456789"
+    telegram_bot_server_name: "ci-test-01"
+    base_deploy_path: "/opt/services"
+  pre_tasks:
+    - name: Installer Docker pour les checks
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+  roles:
+    - role: monit

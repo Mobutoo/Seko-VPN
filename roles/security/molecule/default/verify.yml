@@ -1,0 +1,16 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier que UFW est installé
+      ansible.builtin.command:
+        cmd: ufw version
+      register: security_ufw_check
+      changed_when: false
+
+    - name: Vérifier que Fail2Ban est installé
+      ansible.builtin.command:
+        cmd: fail2ban-client --version
+      register: security_f2b_check
+      changed_when: false

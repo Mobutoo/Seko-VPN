@@ -1,0 +1,7 @@
+# Monitoring conteneurs Docker — Géré par Ansible
+{% for container in monit_containers %}
+check program {{ container }} with path "/usr/bin/docker inspect --format {{ '{{' }}.State.Running{{ '}}' }} {{ container }}"
+    if status != 0 for 2 cycles then exec "/usr/bin/docker restart {{ container }}"
+    if status != 0 for 2 cycles then exec "/etc/monit/telegram-alert.sh '{{ container }} redémarré'"
+
+{% endfor %}

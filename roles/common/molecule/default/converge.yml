@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    system_user: "testuser"
+    system_user_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest test@test"
+    vault_system_user_password: "TestPassword123"
+    base_deploy_path: "/opt/services"
+  roles:
+    - role: common

@@ -1,0 +1,5 @@
+# Monitoring Telegram Bot — Géré par Ansible
+check process telegram-bot matching "telegram-bot"
+    start program = "/usr/bin/systemctl start telegram-bot"
+    stop program = "/usr/bin/systemctl stop telegram-bot"
+    if 3 restarts within 5 cycles then exec "/etc/monit/telegram-alert.sh 'Telegram Bot instable'"

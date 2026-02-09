@@ -1,0 +1,4 @@
+---
+vaultwarden_version: "1.35.1-alpine"
+vaultwarden_data_path: "/opt/services/vaultwarden"
+domain_vaultwarden: "vault.example.com"

@@ -1,0 +1,4 @@
+---
+system_user: "srvadmin"
+system_user_ssh_pubkey: ""
+base_deploy_path: "/opt/services"

@@ -1,0 +1,22 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier Docker version
+      ansible.builtin.command:
+        cmd: docker version
+      register: docker_version_check
+      changed_when: false
+
+    - name: Vérifier Docker Compose version
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: docker_compose_check
+      changed_when: false
+
+    - name: Vérifier le réseau proxy-net
+      ansible.builtin.command:
+        cmd: docker network inspect proxy-net
+      register: docker_network_check
+      changed_when: false

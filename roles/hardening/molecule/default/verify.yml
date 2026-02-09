@@ -1,0 +1,41 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier la configuration journald
+      ansible.builtin.command:
+        cmd: grep SystemMaxUse /etc/systemd/journald.conf
+      register: hardening_journald_check
+      changed_when: false
+
+    - name: Valider journald
+      ansible.builtin.assert:
+        that:
+          - "'500M' in hardening_journald_check.stdout"
+
+    - name: Vérifier chrony installé
+      ansible.builtin.command:
+        cmd: chronyc tracking
+      register: hardening_chrony_check
+      changed_when: false
+
+    - name: Vérifier logrotate Monit
+      ansible.builtin.stat:
+        path: /etc/logrotate.d/monit
+      register: hardening_logrotate_monit
+
+    - name: Valider logrotate
+      ansible.builtin.assert:
+        that:
+          - hardening_logrotate_monit.stat.exists
+
+    - name: Vérifier unattended-upgrades
+      ansible.builtin.stat:
+        path: /etc/apt/apt.conf.d/50unattended-upgrades
+      register: hardening_unattended
+
+    - name: Valider unattended-upgrades
+      ansible.builtin.assert:
+        that:
+          - hardening_unattended.stat.exists

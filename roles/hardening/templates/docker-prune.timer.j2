@@ -1,0 +1,11 @@
+# /etc/systemd/system/docker-prune.timer — Géré par Ansible
+[Unit]
+Description=Timer hebdomadaire pour Docker prune
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=3600
+
+[Install]
+WantedBy=timers.target

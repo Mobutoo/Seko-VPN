@@ -1,0 +1,15 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier le conteneur Zerobyte
+      ansible.builtin.command:
+        cmd: docker inspect zerobyte --format "{{ '{{' }}.State.Running{{ '}}' }}"
+      register: zerobyte_check
+      changed_when: false
+
+    - name: Valider Zerobyte
+      ansible.builtin.assert:
+        that:
+          - "'true' in zerobyte_check.stdout"

@@ -1,0 +1,24 @@
+---
+- name: Créer le répertoire Caddy
+  ansible.builtin.file:
+    path: "{{ caddy_data_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Déployer le Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_data_path }}/Caddyfile"
+    mode: "0644"
+  notify: Restart caddy
+
+- name: Déployer le docker-compose Caddy
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ caddy_data_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Démarrer Caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ caddy_data_path }}"
+    state: present

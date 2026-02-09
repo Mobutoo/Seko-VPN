@@ -1,0 +1,19 @@
+# docker-compose.yml Headplane — Géré par Ansible
+# ATTENTION : Image distroless — PAS de healthcheck interne
+services:
+  headplane:
+    image: "ghcr.io/tale/headplane:{{ headplane_version }}"
+    container_name: headplane
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      HEADSCALE_URL: "http://headscale:8080"
+      COOKIE_SECRET: "{{ vault_headplane_cookie_secret }}"
+      ROOT_URL: "https://{{ domain_headplane }}"
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true

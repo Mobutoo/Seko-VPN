@@ -1,0 +1,15 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier le conteneur Headplane
+      ansible.builtin.command:
+        cmd: docker inspect headplane --format "{{ '{{' }}.State.Running{{ '}}' }}"
+      register: headplane_check
+      changed_when: false
+
+    - name: Valider Headplane
+      ansible.builtin.assert:
+        that:
+          - "'true' in headplane_check.stdout"

@@ -1,0 +1,154 @@
+---
+# ============================================================
+# hardening — Journald, logrotate, chrony, swap, unattended-upgrades, docker-prune
+# ============================================================
+
+# --- Journald ---
+- name: Configurer journald
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf
+    mode: "0644"
+  notify: Restart systemd-journald
+
+# --- Logrotate ---
+- name: Configurer logrotate pour Monit
+  ansible.builtin.template:
+    src: logrotate-monit.j2
+    dest: /etc/logrotate.d/monit
+    mode: "0644"
+
+- name: Configurer logrotate pour Alloy
+  ansible.builtin.template:
+    src: logrotate-alloy.j2
+    dest: /etc/logrotate.d/alloy
+    mode: "0644"
+
+- name: Configurer logrotate pour Telegram Bot
+  ansible.builtin.template:
+    src: logrotate-telegram-bot.j2
+    dest: /etc/logrotate.d/telegram-bot
+    mode: "0644"
+
+# --- Unattended-upgrades ---
+- name: Installer unattended-upgrades
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+
+- name: Configurer unattended-upgrades
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: "0644"
+
+- name: Configurer auto-upgrades
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+
+# --- Chrony (NTP) ---
+- name: Installer chrony
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+
+- name: Activer et démarrer chrony
+  ansible.builtin.service:
+    name: chrony
+    state: started
+    enabled: true
+
+# --- Swap conditionnel ---
+- name: Vérifier la RAM disponible
+  ansible.builtin.set_fact:
+    hardening_needs_swap: "{{ ansible_memtotal_mb < 4096 }}"
+
+- name: Vérifier si le swap existe déjà
+  ansible.builtin.command:
+    cmd: swapon --show
+  register: hardening_swap_check
+  changed_when: false
+
+- name: Créer le fichier swap
+  ansible.builtin.command:
+    cmd: "{{ item }}"
+  loop:
+    - "fallocate -l {{ hardening_swap_size }} /swapfile"
+    - "chmod 600 /swapfile"
+    - "mkswap /swapfile"
+    - "swapon /swapfile"
+  when:
+    - hardening_needs_swap | bool
+    - hardening_swap_check.stdout == ""
+
+- name: Ajouter le swap dans fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+    state: present
+  when:
+    - hardening_needs_swap | bool
+
+# --- Docker prune timer ---
+- name: Déployer le service docker-prune
+  ansible.builtin.template:
+    src: docker-prune.service.j2
+    dest: /etc/systemd/system/docker-prune.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Déployer le timer docker-prune
+  ansible.builtin.template:
+    src: docker-prune.timer.j2
+    dest: /etc/systemd/system/docker-prune.timer
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Forcer le reload systemd
+  ansible.builtin.meta:
+    flush_handlers
+
+- name: Activer le timer docker-prune
+  ansible.builtin.systemd:
+    name: docker-prune.timer
+    state: started
+    enabled: true
+
+# --- Sysctl complémentaire ---
+- name: Configurer sysctl complémentaire
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    reload: true
+  loop:
+    - { key: "kernel.panic", value: "10" }
+    - { key: "fs.file-max", value: "2097152" }
+    - { key: "vm.swappiness", value: "10" }
+
+# --- Docker daemon limits ---
+- name: Créer le répertoire override Docker
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    mode: "0755"
+
+- name: Configurer LimitNOFILE pour Docker
+  ansible.builtin.template:
+    src: docker-override.conf.j2
+    dest: /etc/systemd/system/docker.service.d/override.conf
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart docker
+
+# --- Tmpfiles cleanup ---
+- name: Vérifier que systemd-tmpfiles-clean.timer est actif
+  ansible.builtin.systemd:
+    name: systemd-tmpfiles-clean.timer
+    state: started
+    enabled: true

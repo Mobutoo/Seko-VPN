@@ -1,0 +1,17 @@
+---
+- name: Créer le répertoire Headplane
+  ansible.builtin.file:
+    path: "{{ headplane_data_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Déployer le docker-compose Headplane
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ headplane_data_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Démarrer Headplane
+  community.docker.docker_compose_v2:
+    project_src: "{{ headplane_data_path }}"
+    state: present

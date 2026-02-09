@@ -1,0 +1,27 @@
+---
+- name: Créer les répertoires Headscale
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ headscale_data_path }}"
+    - "{{ headscale_data_path }}/config"
+
+- name: Déployer la configuration Headscale
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ headscale_data_path }}/config/config.yaml"
+    mode: "0644"
+  notify: Restart headscale
+
+- name: Déployer le docker-compose Headscale
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ headscale_data_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Démarrer Headscale
+  community.docker.docker_compose_v2:
+    project_src: "{{ headscale_data_path }}"
+    state: present

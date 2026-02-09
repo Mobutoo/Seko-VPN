@@ -1,0 +1,15 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier le conteneur Portainer
+      ansible.builtin.command:
+        cmd: docker inspect portainer --format "{{ '{{' }}.State.Running{{ '}}' }}"
+      register: portainer_check
+      changed_when: false
+
+    - name: Valider Portainer
+      ansible.builtin.assert:
+        that:
+          - "'true' in portainer_check.stdout"

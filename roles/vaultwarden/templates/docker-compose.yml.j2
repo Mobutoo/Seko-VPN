@@ -1,0 +1,24 @@
+# docker-compose.yml Vaultwarden — Géré par Ansible
+services:
+  vaultwarden:
+    image: "vaultwarden/server:{{ vaultwarden_version }}"
+    container_name: vaultwarden
+    restart: unless-stopped
+    expose:
+      - "80"
+    environment:
+      DOMAIN: "https://{{ domain_vaultwarden }}"
+      ADMIN_TOKEN: "{{ vault_vaultwarden_admin_token }}"
+      SIGNUPS_ALLOWED: "false"
+      WEBSOCKET_ENABLED: "true"
+    volumes:
+      - vaultwarden_data:/data
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
+
+volumes:
+  vaultwarden_data:

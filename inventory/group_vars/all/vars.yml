@@ -1,0 +1,66 @@
+---
+# ============================================================
+# vars.yml — Variables publiques du projet Seko-VPN
+# Utilisez ./scripts/wizard.sh pour générer ce fichier
+# ============================================================
+
+# --- Serveur ---
+server_ip: "CHANGER_MOI_IP"
+system_user: "srvadmin"
+system_user_ssh_pubkey: "CHANGER_MOI_SSH_PUBKEY"
+
+# --- Domaines ---
+domain_headscale: "hs.example.com"
+domain_headplane: "nga.example.com"
+domain_vaultwarden: "vault.example.com"
+domain_portainer: "portainer.example.com"
+domain_zerobyte: "zb.example.com"
+domain_uptime_kuma: "status.example.com"
+
+# --- Email et SSH ---
+acme_email: "admin@example.com"
+ssh_custom_port: 2222
+
+# --- CI mode ---
+ci_mode: false
+
+# --- Versions ---
+headscale_version: "0.26.0"
+vaultwarden_version: "1.35.1-alpine"
+portainer_version: "lts"
+zerobyte_version: "v0.25"
+headplane_version: "latest"
+uptime_kuma_version: "latest"
+
+# --- Chemins ---
+base_deploy_path: "/opt/services"
+headscale_data_path: "{{ base_deploy_path }}/headscale"
+headplane_data_path: "{{ base_deploy_path }}/headplane"
+vaultwarden_data_path: "{{ base_deploy_path }}/vaultwarden"
+portainer_data_path: "{{ base_deploy_path }}/portainer"
+zerobyte_data_path: "{{ base_deploy_path }}/zerobyte"
+uptime_kuma_data_path: "{{ base_deploy_path }}/uptime-kuma"
+caddy_data_path: "{{ base_deploy_path }}/caddy"
+telegram_bot_path: "{{ base_deploy_path }}/telegram-bot"
+
+# --- Monit ---
+monit_check_interval: 30
+monit_containers:
+  - headscale
+  - headplane
+  - vaultwarden
+  - portainer
+  - zerobyte
+  - caddy
+  - uptime-kuma
+
+# --- Telegram Bot ---
+telegram_bot_server_name: "seko-vpn-01"
+
+# --- Alloy ---
+alloy_loki_url: ""
+
+# --- Hardening ---
+hardening_swap_size: "2G"
+hardening_journal_max_use: "500M"
+hardening_journal_max_retention: "30day"

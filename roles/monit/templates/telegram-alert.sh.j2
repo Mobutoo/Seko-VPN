@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Script d'alerte Telegram pour Monit — Géré par Ansible
+TOKEN="{{ vault_telegram_bot_token }}"
+CHAT_ID="{{ vault_telegram_chat_id }}"
+SERVER="{{ telegram_bot_server_name }}"
+MESSAGE="[${SERVER}] ⚠️ MONIT: $1"
+
+curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+    -d chat_id="${CHAT_ID}" \
+    -d text="${MESSAGE}" \
+    -d parse_mode="HTML" > /dev/null 2>&1

@@ -1,0 +1,87 @@
+---
+# ============================================================
+# site.yml — Déploiement complet Seko-VPN (14 rôles)
+# ============================================================
+- name: Déploiement infrastructure Seko-VPN
+  hosts: all
+  become: true
+
+  pre_tasks:
+    - name: Vérifier que les variables obligatoires sont définies
+      ansible.builtin.assert:
+        that:
+          - server_ip is defined and server_ip != "CHANGER_MOI_IP"
+          - system_user is defined
+          - domain_headscale is defined
+          - domain_headplane is defined
+          - domain_vaultwarden is defined
+          - domain_portainer is defined
+          - domain_zerobyte is defined
+          - domain_uptime_kuma is defined
+          - acme_email is defined
+          - vault_system_user_password is defined and vault_system_user_password != "CHANGER_MOI_PASSWORD"
+          - vault_vaultwarden_admin_token is defined and vault_vaultwarden_admin_token != "CHANGER_MOI_VW_TOKEN"
+          - vault_headplane_cookie_secret is defined and vault_headplane_cookie_secret != "CHANGER_MOI_HP_COOKIE_32CHARS"
+          - vault_zerobyte_app_secret is defined and vault_zerobyte_app_secret != "CHANGER_MOI_ZB_SECRET_64HEX"
+          - vault_telegram_bot_token is defined and vault_telegram_bot_token != "CHANGER_MOI_TG_TOKEN"
+          - vault_telegram_chat_id is defined and vault_telegram_chat_id != "CHANGER_MOI_TG_CHATID"
+          - vault_monit_password is defined and vault_monit_password != "CHANGER_MOI_MONIT_ALPHANUM"
+        fail_msg: >
+          Des variables obligatoires ne sont pas définies ou contiennent des valeurs par défaut.
+          Lancez ./scripts/wizard.sh pour configurer le projet.
+      tags: [always]
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: security
+      tags: [security]
+    - role: docker
+      tags: [docker]
+    - role: hardening
+      tags: [hardening]
+    - role: caddy
+      tags: [caddy]
+    - role: headscale
+      tags: [headscale]
+    - role: headplane
+      tags: [headplane]
+    - role: vaultwarden
+      tags: [vaultwarden]
+    - role: portainer
+      tags: [portainer]
+    - role: zerobyte
+      tags: [zerobyte]
+    - role: uptime_kuma
+      tags: [uptime_kuma]
+    - role: monit
+      tags: [monit]
+    - role: alloy
+      tags: [alloy]
+    - role: telegram_bot
+      tags: [telegram_bot]
+
+  post_tasks:
+    - name: Recharger Caddy pour prendre en compte tous les vhosts
+      community.docker.docker_compose_v2:
+        project_src: "{{ caddy_data_path }}"
+        state: present
+        services:
+          - caddy
+      tags: [caddy]
+
+    - name: Afficher le résumé du déploiement
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════"
+          - "  Déploiement Seko-VPN terminé !"
+          - "═══════════════════════════════════════"
+          - "  Headscale    : https://{{ domain_headscale }}"
+          - "  Headplane    : https://{{ domain_headplane }}"
+          - "  Vaultwarden  : https://{{ domain_vaultwarden }}"
+          - "  Portainer    : https://{{ domain_portainer }}"
+          - "  Zerobyte     : https://{{ domain_zerobyte }}"
+          - "  Uptime Kuma  : https://{{ domain_uptime_kuma }}"
+          - "  Bot Telegram : actif ({{ telegram_bot_server_name }})"
+          - "═══════════════════════════════════════"
+      tags: [always]

@@ -1,0 +1,45 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier que le service telegram-bot existe
+      ansible.builtin.stat:
+        path: /etc/systemd/system/telegram-bot.service
+      register: telegram_bot_service_check
+
+    - name: Valider le service
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_service_check.stat.exists
+
+    - name: Vérifier le virtualenv Python
+      ansible.builtin.stat:
+        path: /opt/services/telegram-bot/venv/bin/python
+      register: telegram_bot_venv_check
+
+    - name: Valider le venv
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_venv_check.stat.exists
+
+    - name: Vérifier le script bot.py
+      ansible.builtin.stat:
+        path: /opt/services/telegram-bot/bot.py
+      register: telegram_bot_script_check
+
+    - name: Valider le script
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_script_check.stat.exists
+
+    - name: Vérifier le fichier .env (mode 600)
+      ansible.builtin.stat:
+        path: /opt/services/telegram-bot/.env
+      register: telegram_bot_env_check
+
+    - name: Valider le .env
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_env_check.stat.exists
+          - telegram_bot_env_check.stat.mode == '0600'

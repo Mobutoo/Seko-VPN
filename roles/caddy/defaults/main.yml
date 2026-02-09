@@ -1,0 +1,10 @@
+---
+caddy_data_path: "/opt/services/caddy"
+domain_headscale: "hs.example.com"
+domain_headplane: "nga.example.com"
+domain_vaultwarden: "vault.example.com"
+domain_portainer: "portainer.example.com"
+domain_zerobyte: "zb.example.com"
+domain_uptime_kuma: "status.example.com"
+acme_email: "admin@example.com"
+ci_mode: false

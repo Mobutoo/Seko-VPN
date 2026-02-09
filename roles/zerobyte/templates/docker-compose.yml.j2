@@ -1,0 +1,21 @@
+# docker-compose.yml Zerobyte — Géré par Ansible
+services:
+  zerobyte:
+    image: "ghcr.io/borgbase/vorta-server:{{ zerobyte_version }}"
+    container_name: zerobyte
+    restart: unless-stopped
+    expose:
+      - "4096"
+    environment:
+      APP_SECRET: "{{ vault_zerobyte_app_secret }}"
+    volumes:
+      - zerobyte_data:/app/data
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
+
+volumes:
+  zerobyte_data:

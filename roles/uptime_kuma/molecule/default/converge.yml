@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    uptime_kuma_version: "latest"
+    uptime_kuma_data_path: "/opt/services/uptime-kuma"
+  roles:
+    - role: uptime_kuma

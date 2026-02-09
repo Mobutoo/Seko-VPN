@@ -1,0 +1,26 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier le conteneur Caddy
+      ansible.builtin.command:
+        cmd: docker ps --filter name=caddy --format "{{ '{{' }}.Status{{ '}}' }}"
+      register: caddy_container_check
+      changed_when: false
+
+    - name: Valider que Caddy tourne
+      ansible.builtin.assert:
+        that:
+          - "'Up' in caddy_container_check.stdout"
+
+    - name: Vérifier le Caddyfile (6 vhosts)
+      ansible.builtin.command:
+        cmd: grep -c "reverse_proxy" /opt/services/caddy/Caddyfile
+      register: caddy_vhost_count
+      changed_when: false
+
+    - name: Valider 6 vhosts
+      ansible.builtin.assert:
+        that:
+          - caddy_vhost_count.stdout | int == 6

@@ -1,0 +1,48 @@
+---
+# ============================================================
+# verify.yml — Vérification post-déploiement
+# ============================================================
+- name: Vérification post-déploiement Seko-VPN
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Vérifier les conteneurs Docker
+      ansible.builtin.command:
+        cmd: docker ps --format "{{ '{{' }}.Names{{ '}}' }}: {{ '{{' }}.Status{{ '}}' }}"
+      register: verify_docker_ps
+      changed_when: false
+
+    - name: Afficher les conteneurs
+      ansible.builtin.debug:
+        var: verify_docker_ps.stdout_lines
+
+    - name: Vérifier Monit
+      ansible.builtin.command:
+        cmd: monit summary
+      register: verify_monit
+      changed_when: false
+
+    - name: Afficher le statut Monit
+      ansible.builtin.debug:
+        var: verify_monit.stdout_lines
+
+    - name: Vérifier le bot Telegram
+      ansible.builtin.command:
+        cmd: systemctl is-active telegram-bot
+      register: verify_telegram_bot
+      changed_when: false
+
+    - name: Vérifier Alloy
+      ansible.builtin.command:
+        cmd: systemctl is-active alloy
+      register: verify_alloy
+      changed_when: false
+
+    - name: Afficher le résumé
+      ansible.builtin.debug:
+        msg:
+          - "Conteneurs Docker : OK"
+          - "Monit : OK"
+          - "Telegram Bot : {{ verify_telegram_bot.stdout }}"
+          - "Alloy : {{ verify_alloy.stdout }}"

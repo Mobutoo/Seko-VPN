@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier Alloy version
+      ansible.builtin.command:
+        cmd: alloy --version
+      register: alloy_version_check
+      changed_when: false
+
+    - name: Vérifier que Alloy est actif
+      ansible.builtin.command:
+        cmd: systemctl is-active alloy
+      register: alloy_active_check
+      changed_when: false
+
+    - name: Valider Alloy actif
+      ansible.builtin.assert:
+        that:
+          - "'active' in alloy_active_check.stdout"
+
+    - name: Vérifier la config Alloy
+      ansible.builtin.stat:
+        path: /etc/alloy/config.alloy
+      register: alloy_config_check
+
+    - name: Valider la config
+      ansible.builtin.assert:
+        that:
+          - alloy_config_check.stat.exists

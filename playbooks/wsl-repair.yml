@@ -1,0 +1,45 @@
+---
+# ============================================================
+# wsl-repair.yml — Correction DNS/systemd WSL2
+# Usage : ansible-playbook playbooks/wsl-repair.yml --connection local
+# ============================================================
+- name: Réparation WSL2
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Vérifier que nous sommes sous WSL
+      ansible.builtin.stat:
+        path: /proc/sys/fs/binfmt_misc/WSLInterop
+      register: wsl_check
+
+    - name: Arrêter si pas sous WSL
+      ansible.builtin.fail:
+        msg: "Ce playbook est uniquement pour WSL2"
+      when: not wsl_check.stat.exists
+
+    - name: Configurer resolv.conf pour éviter les problèmes DNS
+      ansible.builtin.copy:
+        dest: /etc/wsl.conf
+        content: |
+          [network]
+          generateResolvConf = false
+          [boot]
+          systemd = true
+        mode: "0644"
+
+    - name: Configurer DNS statique
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver 8.8.8.8
+          nameserver 1.1.1.1
+        mode: "0644"
+
+    - name: Afficher les instructions
+      ansible.builtin.debug:
+        msg:
+          - "WSL2 configuré. Redémarrez WSL :"
+          - "  (PowerShell) : wsl --shutdown"
+          - "  Puis relancez votre terminal WSL."

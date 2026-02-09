@@ -1,0 +1,8 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    ssh_custom_port: 2222
+  roles:
+    - role: security

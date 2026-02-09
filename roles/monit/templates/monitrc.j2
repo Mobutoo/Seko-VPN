@@ -1,0 +1,16 @@
+# /etc/monit/monitrc — Géré par Ansible
+# Monit HEADLESS — pas d'interface web exposée
+
+set daemon {{ monit_check_interval }}
+set log /var/log/monit.log
+
+# httpd interne (nécessaire pour le fonctionnement de Monit)
+set httpd port 2812
+    allow localhost
+    allow admin:{{ vault_monit_password }}
+
+# Alertes Telegram
+set alert root@localhost
+
+# Inclure les fichiers de configuration
+include /etc/monit/conf.d/*

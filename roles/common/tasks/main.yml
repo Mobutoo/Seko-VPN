@@ -1,0 +1,73 @@
+---
+- name: Mettre à jour le cache apt
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Installer les paquets de base
+  ansible.builtin.apt:
+    name:
+      - sudo
+      - curl
+      - wget
+      - gnupg
+      - ca-certificates
+      - apt-transport-https
+      - python3
+      - python3-pip
+      - python3-venv
+      - git
+      - htop
+      - jq
+      - unzip
+      - rsync
+      - vim
+      - net-tools
+      - lsb-release
+    state: present
+
+- name: Configurer la locale fr_FR.UTF-8
+  ansible.builtin.locale_gen:
+    name: fr_FR.UTF-8
+    state: present
+
+- name: Créer l utilisateur système
+  ansible.builtin.user:
+    name: "{{ system_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+    password: "{{ vault_system_user_password | password_hash('sha512') }}"
+
+- name: Configurer sudo sans mot de passe
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ system_user }}"
+    content: "{{ system_user }} ALL=(ALL) NOPASSWD: ALL\n"
+    mode: "0440"
+    validate: "visudo -cf %s"
+
+- name: Créer le répertoire .ssh
+  ansible.builtin.file:
+    path: "/home/{{ system_user }}/.ssh"
+    state: directory
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0700"
+
+- name: Ajouter la clé SSH publique
+  ansible.builtin.copy:
+    dest: "/home/{{ system_user }}/.ssh/authorized_keys"
+    content: "{{ system_user_ssh_pubkey }}\n"
+    owner: "{{ system_user }}"
+    group: "{{ system_user }}"
+    mode: "0600"
+  when: system_user_ssh_pubkey | length > 0
+
+- name: Créer le répertoire de base des services
+  ansible.builtin.file:
+    path: "{{ base_deploy_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

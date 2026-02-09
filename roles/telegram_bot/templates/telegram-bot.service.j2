@@ -1,0 +1,19 @@
+# /etc/systemd/system/telegram-bot.service — Géré par Ansible
+[Unit]
+Description=Seko-VPN Telegram Bot
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory={{ telegram_bot_path }}
+EnvironmentFile={{ telegram_bot_path }}/.env
+ExecStart={{ telegram_bot_path }}/venv/bin/python {{ telegram_bot_path }}/bot.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/telegram-bot/bot.log
+StandardError=append:/var/log/telegram-bot/bot.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    portainer_version: "lts"
+    portainer_data_path: "/opt/services/portainer"
+  roles:
+    - role: portainer

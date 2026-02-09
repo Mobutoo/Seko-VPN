@@ -1,0 +1,6 @@
+# /etc/systemd/journald.conf — Géré par Ansible
+[Journal]
+SystemMaxUse={{ hardening_journal_max_use }}
+MaxRetentionSec={{ hardening_journal_max_retention }}
+Compress=yes
+ForwardToSyslog=no

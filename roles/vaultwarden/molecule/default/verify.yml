@@ -1,0 +1,15 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier le conteneur Vaultwarden
+      ansible.builtin.command:
+        cmd: docker inspect vaultwarden --format "{{ '{{' }}.State.Running{{ '}}' }}"
+      register: vaultwarden_check
+      changed_when: false
+
+    - name: Valider Vaultwarden
+      ansible.builtin.assert:
+        that:
+          - "'true' in vaultwarden_check.stdout"

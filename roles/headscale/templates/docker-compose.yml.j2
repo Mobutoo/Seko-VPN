@@ -1,0 +1,21 @@
+# docker-compose.yml Headscale — Géré par Ansible
+services:
+  headscale:
+    image: "headscale/headscale:{{ headscale_version }}"
+    container_name: headscale
+    restart: unless-stopped
+    command: serve
+    expose:
+      - "8080"
+    volumes:
+      - ./config:/etc/headscale
+      - headscale_data:/var/lib/headscale
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
+
+volumes:
+  headscale_data:

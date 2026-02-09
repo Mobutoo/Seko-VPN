@@ -1,0 +1,3 @@
+---
+portainer_version: "lts"
+portainer_data_path: "/opt/services/portainer"
