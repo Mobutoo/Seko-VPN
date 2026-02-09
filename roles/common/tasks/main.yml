@@ -83,7 +83,9 @@
 - name: Configurer le hostname du serveur
   ansible.builtin.hostname:
     name: "{{ server_hostname | default(telegram_bot_server_name | default(omit)) }}"
-  when: server_hostname is defined or telegram_bot_server_name is defined
+  when:
+      - server_hostname is defined or telegram_bot_server_name is defined
+      - ansible_virtualization_type != "docker"
 
 - name: Mettre à jour /etc/hosts avec le hostname
   ansible.builtin.lineinfile:
@@ -91,7 +93,9 @@
     regexp: '^127\.0\.1\.1'
     line: "127.0.1.1 {{ server_hostname | default(telegram_bot_server_name) }}"
     state: present
-  when: server_hostname is defined or telegram_bot_server_name is defined
+  when:
+      - server_hostname is defined or telegram_bot_server_name is defined
+      - ansible_virtualization_type != "docker"
 
 # ── Création de l'utilisateur système ───────────────────────
 - name: Créer l utilisateur système

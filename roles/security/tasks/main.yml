@@ -11,6 +11,7 @@
     state: enabled
     default: deny
     direction: incoming
+    when: ansible_virtualization_type != "docker"
 
 - name: Autoriser SSH (port 22 pour le déploiement initial)
   community.general.ufw:
@@ -18,6 +19,7 @@
     port: "22"
     proto: tcp
     comment: "SSH standard"
+    when: ansible_virtualization_type != "docker"
 
 - name: Autoriser HTTP
   community.general.ufw:
@@ -25,6 +27,7 @@
     port: "80"
     proto: tcp
     comment: "HTTP"
+    when: ansible_virtualization_type != "docker"
 
 - name: Autoriser HTTPS
   community.general.ufw:
@@ -32,6 +35,7 @@
     port: "443"
     proto: tcp
     comment: "HTTPS"
+    when: ansible_virtualization_type != "docker"
 
 - name: Autoriser le port SSH custom
   community.general.ufw:
@@ -39,6 +43,7 @@
     port: "{{ ssh_custom_port }}"
     proto: tcp
     comment: "SSH custom"
+    when: ansible_virtualization_type != "docker"
 
 - name: Configurer Fail2Ban
   ansible.builtin.copy:
@@ -82,3 +87,4 @@
     - { key: "net.ipv4.conf.all.accept_source_route", value: "0" }
     - { key: "net.ipv4.tcp_syncookies", value: "1" }
     - { key: "net.ipv6.conf.all.accept_redirects", value: "0" }
+    when: ansible_virtualization_type != "docker"
