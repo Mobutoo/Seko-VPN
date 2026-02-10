@@ -12,4 +12,5 @@
           - curl
           - gnupg
           - lsb-release
+          - python3-requests
         state: present

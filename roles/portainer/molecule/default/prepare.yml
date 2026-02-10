@@ -49,6 +49,7 @@
       ansible.builtin.service:
         name: docker
         state: started
+      when: ansible_virtualization_type != "docker"
 
     - name: Créer le réseau proxy-net
       community.docker.docker_network:
