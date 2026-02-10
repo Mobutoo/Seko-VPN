@@ -29,15 +29,23 @@
         cmd: systemctl is-active telegram-bot
       register: verify_telegram_bot
       changed_when: false
+      retries: 3
+      delay: 10
+      until: verify_telegram_bot.stdout == 'active'
+      failed_when: false
     - name: Vérifier Alloy
       ansible.builtin.command:
         cmd: systemctl is-active alloy
       register: verify_alloy
       changed_when: false
+      retries: 3
+      delay: 10
+      until: verify_alloy.stdout == 'active'
+      failed_when: false
     - name: Afficher le résumé
       ansible.builtin.debug:
         msg:
           - "Conteneurs Docker : OK"
           - "Monit : {{ 'OK' if verify_monit.rc == 0 else 'NON DÉMARRÉ (rc=' + verify_monit.rc | string + ')' }}"
-          - "Telegram Bot : {{ verify_telegram_bot.stdout }}"
-          - "Alloy : {{ verify_alloy.stdout }}"
+          - "Telegram Bot : {{ 'OK' if verify_telegram_bot.stdout == 'active' else verify_telegram_bot.stdout | default('INCONNU') }}"
+          - "Alloy : {{ 'OK' if verify_alloy.stdout == 'active' else verify_alloy.stdout | default('INCONNU') }}"
