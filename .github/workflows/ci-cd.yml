@@ -306,8 +306,8 @@ jobs:
       - name: Setup deploy SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/seko-vpn-deploy
+          chmod 600 ~/.ssh/seko-vpn-deploy
 
       - name: Write vault password file
         run: |
