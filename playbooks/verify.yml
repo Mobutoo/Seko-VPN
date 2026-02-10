@@ -38,6 +38,6 @@
       ansible.builtin.debug:
         msg:
           - "Conteneurs Docker : OK"
-          - "Monit : {{ 'OK' if verify_monit.rc == 0 else 'NON DÉMARRÉ (rc=' + verify_monit.rc|string + ')' }}"
+          - "Monit : {{ 'OK' if verify_monit.rc == 0 else 'NON DÉMARRÉ (rc=' + verify_monit.rc | string + ')' }}"
           - "Telegram Bot : {{ verify_telegram_bot.stdout }}"
           - "Alloy : {{ verify_alloy.stdout }}"
