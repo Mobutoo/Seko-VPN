@@ -1,5 +1,6 @@
 # docker-compose.yml Headplane — Géré par Ansible
 # ATTENTION : Image distroless — PAS de healthcheck interne
+# docker-compose.yml Headplane — Géré par Ansible
 services:
   headplane:
     image: "ghcr.io/tale/headplane:{{ headplane_version }}"
@@ -7,13 +8,15 @@ services:
     restart: unless-stopped
     expose:
       - "3000"
-    environment:
-      HEADSCALE_URL: "http://headscale:8080"
-      COOKIE_SECRET: "{{ vault_headplane_cookie_secret }}"
-      ROOT_URL: "https://{{ domain_headplane }}"
+    volumes:
+      - "{{ headplane_data_path }}/config.yaml:/etc/headplane/config.yaml:ro"
+      - "{{ headplane_data_path }}/data:/var/lib/headplane"
+      - "{{ headscale_data_path }}/config/config.yaml:/etc/headscale/config.yaml:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    labels:
+      me.tale.headplane.target: "headscale"
     networks:
       - proxy-net
-
 networks:
   proxy-net:
     external: true
