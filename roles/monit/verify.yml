@@ -1,0 +1,45 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier la syntaxe Monit
+      ansible.builtin.command:
+        cmd: monit -t
+      register: monit_syntax_check
+      changed_when: false
+
+    - name: Vérifier que Monit est actif
+      ansible.builtin.command:
+        cmd: systemctl is-active monit
+      register: monit_active_check
+      when: ansible_virtualization_type != "docker"
+      changed_when: false
+
+    - name: Valider Monit actif
+      ansible.builtin.assert:
+        that:
+          - "'active' in monit_active_check.stdout"
+      when: ansible_virtualization_type != "docker"
+
+    - name: Vérifier le script Telegram
+      ansible.builtin.stat:
+        path: /etc/monit/telegram-alert.sh
+      register: monit_telegram_script
+
+    - name: Valider le script Telegram
+      ansible.builtin.assert:
+        that:
+          - monit_telegram_script.stat.exists
+          - monit_telegram_script.stat.mode == '0755'
+
+    - name: Vérifier les fichiers conf.d
+      ansible.builtin.find:
+        paths: /etc/monit/conf.d
+        patterns: "*"
+      register: monit_confd_files
+
+    - name: Valider les fichiers conf.d
+      ansible.builtin.assert:
+        that:
+          - monit_confd_files.matched >= 4

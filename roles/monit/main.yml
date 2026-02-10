@@ -1,0 +1,64 @@
+---
+- name: Installer Monit
+  ansible.builtin.apt:
+    name: monit
+    state: present
+
+- name: Créer le répertoire conf.d
+  ansible.builtin.file:
+    path: /etc/monit/conf.d
+    state: directory
+    mode: "0755"
+
+- name: Créer le répertoire /var/lib/monit
+  ansible.builtin.file:
+    path: /var/lib/monit
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Déployer la configuration monitrc
+  ansible.builtin.template:
+    src: monitrc.j2
+    dest: /etc/monit/monitrc
+    mode: "0600"
+  notify: Restart monit
+
+- name: Déployer les checks système
+  ansible.builtin.template:
+    src: "conf.d/{{ item }}.j2"
+    dest: "/etc/monit/conf.d/{{ item }}"
+    mode: "0644"
+  loop:
+    - system
+    - docker-daemon
+    - docker-containers
+    - alloy
+    - telegram-bot
+  notify: Reload monit
+
+- name: Déployer le script d alerte Telegram
+  ansible.builtin.template:
+    src: telegram-alert.sh.j2
+    dest: /etc/monit/telegram-alert.sh
+    mode: "0755"
+
+- name: Déployer le script de vérification conteneur
+  ansible.builtin.template:
+    src: check-container.sh.j2
+    dest: /etc/monit/check-container.sh
+    mode: "0755"
+
+- name: Déployer le script de redémarrage conteneur
+  ansible.builtin.template:
+    src: restart-container.sh.j2
+    dest: /etc/monit/restart-container.sh
+    mode: "0755"
+
+- name: Activer et démarrer Monit
+  ansible.builtin.service:
+    name: monit
+    state: started
+    enabled: true
+  when: ansible_virtualization_type != "docker"
