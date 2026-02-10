@@ -2,6 +2,8 @@
 # Monit HEADLESS — pas d'interface web exposée
 
 set daemon {{ monit_check_interval }}
+set idfile /var/lib/monit/id
+set statefile /var/lib/monit/state
 set log /var/log/monit.log
 
 # httpd interne (nécessaire pour le fonctionnement de Monit)
