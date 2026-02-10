@@ -303,10 +303,17 @@ jobs:
           pip install -r requirements-dev.txt
           ansible-galaxy collection install -r requirements.yml
 
+#      - name: Setup deploy SSH key
+#        run: |
+#          mkdir -p ~/.ssh
+#         echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/seko-vpn-deploy
+#          chmod 600 ~/.ssh/seko-vpn-deploy
       - name: Setup deploy SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/seko-vpn-deploy
+          printenv DEPLOY_KEY > ~/.ssh/seko-vpn-deploy
           chmod 600 ~/.ssh/seko-vpn-deploy
 
       - name: Write vault password file
