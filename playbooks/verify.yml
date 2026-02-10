@@ -23,6 +23,9 @@
         cmd: monit summary
       register: verify_monit
       changed_when: false
+      retries: 3
+      delay: 10
+      until: verify_monit.rc == 0
 
     - name: Afficher le statut Monit
       ansible.builtin.debug:
