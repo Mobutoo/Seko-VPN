@@ -3,7 +3,6 @@
   ansible.builtin.apt:
     name:
       - apt-transport-https
-      - software-properties-common
       - gnupg
     state: present
 
