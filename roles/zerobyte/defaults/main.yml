@@ -1,3 +1,4 @@
 ---
-zerobyte_version: "v0.25"
+zerobyte_version: "v0.26.0"
 zerobyte_data_path: "/opt/services/zerobyte"
+domain_zerobyte: "zb.example.com"

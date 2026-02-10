@@ -1,0 +1,5 @@
+#!/bin/bash
+# Redémarre un conteneur Docker et alerte via Telegram — Géré par Ansible
+CONTAINER="$1"
+/usr/bin/docker restart "$CONTAINER"
+/etc/monit/telegram-alert.sh "${CONTAINER} redémarré automatiquement par Monit"

@@ -161,9 +161,16 @@ all:
       ansible_host: ${SERVER_IP}
       ansible_user: ${SYSTEM_USER}
       ansible_port: 22
-      ansible_ssh_private_key_file: ${SSH_PUBKEY_PATH%.pub}
 EOF
     success "hosts.yml généré"
+
+    # Mettre à jour ansible.cfg avec la clé SSH
+    if grep -q "^private_key_file" ansible.cfg 2>/dev/null; then
+        sed -i "s|^private_key_file.*|private_key_file = ${SSH_PUBKEY_PATH%.pub}|" ansible.cfg
+    else
+        sed -i "/^\[defaults\]/a private_key_file = ${SSH_PUBKEY_PATH%.pub}" ansible.cfg
+    fi
+    success "ansible.cfg mis à jour avec la clé SSH"
 }
 
 encrypt_vault() {

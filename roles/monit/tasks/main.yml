@@ -10,6 +10,14 @@
     state: directory
     mode: "0755"
 
+- name: Créer le répertoire /var/lib/monit
+  ansible.builtin.file:
+    path: /var/lib/monit
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Déployer la configuration monitrc
   ansible.builtin.template:
     src: monitrc.j2
@@ -34,6 +42,18 @@
   ansible.builtin.template:
     src: telegram-alert.sh.j2
     dest: /etc/monit/telegram-alert.sh
+    mode: "0755"
+
+- name: Déployer le script de vérification conteneur
+  ansible.builtin.template:
+    src: check-container.sh.j2
+    dest: /etc/monit/check-container.sh
+    mode: "0755"
+
+- name: Déployer le script de redémarrage conteneur
+  ansible.builtin.template:
+    src: restart-container.sh.j2
+    dest: /etc/monit/restart-container.sh
     mode: "0755"
 
 - name: Activer et démarrer Monit

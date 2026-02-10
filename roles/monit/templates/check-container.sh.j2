@@ -1,0 +1,9 @@
+#!/bin/bash
+# Vérifie si un conteneur Docker tourne — Géré par Ansible
+CONTAINER="$1"
+STATUS=$(/usr/bin/docker inspect --format '{{ '{{' }}.State.Running{{ '}}' }}' "$CONTAINER" 2>/dev/null)
+if [ "$STATUS" = "true" ]; then
+    exit 0
+else
+    exit 1
+fi

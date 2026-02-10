@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\asus\\\\seko\\\\VPN\\\\Seko-VPN\" tag --list)"
+    ]
+  }
+}

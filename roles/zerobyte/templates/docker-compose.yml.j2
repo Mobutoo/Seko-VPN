@@ -1,21 +1,21 @@
 # docker-compose.yml Zerobyte — Géré par Ansible
 services:
   zerobyte:
-    image: "ghcr.io/borgmatic-collective/borgmatic:latest"
+    image: "ghcr.io/nicotsx/zerobyte:{{ zerobyte_version }}"
     container_name: zerobyte
     restart: unless-stopped
     expose:
       - "4096"
     environment:
+      TZ: "Europe/Paris"
+      BASE_URL: "https://{{ domain_zerobyte }}"
       APP_SECRET: "{{ vault_zerobyte_app_secret }}"
     volumes:
-      - zerobyte_data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - "{{ zerobyte_data_path }}/data:/var/lib/zerobyte"
     networks:
       - proxy-net
 
 networks:
   proxy-net:
     external: true
-
-volumes:
-  zerobyte_data:

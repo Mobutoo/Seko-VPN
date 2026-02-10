@@ -1,6 +1,9 @@
 # Monitoring Docker daemon — Géré par Ansible
-check process docker with pidfile /var/run/docker.pid
+check process docker matching "dockerd"
     start program = "/usr/bin/systemctl start docker"
     stop program = "/usr/bin/systemctl stop docker"
-    if failed host 127.0.0.1 port 2375 type tcp for 3 cycles then restart
+    if does not exist for 3 cycles then restart
     if 3 restarts within 5 cycles then exec "/etc/monit/telegram-alert.sh 'Docker daemon instable'"
+
+check file docker-socket with path /var/run/docker.sock
+    if does not exist then exec "/etc/monit/telegram-alert.sh 'Docker socket absent'"

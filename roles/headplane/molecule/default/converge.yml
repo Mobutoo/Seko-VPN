@@ -3,7 +3,7 @@
   hosts: all
   become: true
   vars:
-    headplane_version: "latest"
+    headplane_version: "0.6.1"
     headplane_data_path: "/opt/services/headplane"
     domain_headplane: "nga.ci-test.local"
     domain_headscale: "hs.ci-test.local"

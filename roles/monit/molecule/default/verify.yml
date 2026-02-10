@@ -22,6 +22,18 @@
           - "'active' in monit_active_check.stdout"
       when: ansible_virtualization_type != "docker"
 
+    - name: Vérifier le répertoire /var/lib/monit
+      ansible.builtin.stat:
+        path: /var/lib/monit
+      register: monit_lib_dir
+
+    - name: Valider le répertoire /var/lib/monit
+      ansible.builtin.assert:
+        that:
+          - monit_lib_dir.stat.exists
+          - monit_lib_dir.stat.isdir
+          - monit_lib_dir.stat.mode == '0700'
+
     - name: Vérifier le script Telegram
       ansible.builtin.stat:
         path: /etc/monit/telegram-alert.sh
@@ -32,6 +44,28 @@
         that:
           - monit_telegram_script.stat.exists
           - monit_telegram_script.stat.mode == '0755'
+
+    - name: Vérifier le script check-container
+      ansible.builtin.stat:
+        path: /etc/monit/check-container.sh
+      register: monit_check_container_script
+
+    - name: Valider le script check-container
+      ansible.builtin.assert:
+        that:
+          - monit_check_container_script.stat.exists
+          - monit_check_container_script.stat.mode == '0755'
+
+    - name: Vérifier le script restart-container
+      ansible.builtin.stat:
+        path: /etc/monit/restart-container.sh
+      register: monit_restart_container_script
+
+    - name: Valider le script restart-container
+      ansible.builtin.assert:
+        that:
+          - monit_restart_container_script.stat.exists
+          - monit_restart_container_script.stat.mode == '0755'
 
     - name: Vérifier les fichiers conf.d
       ansible.builtin.find:
