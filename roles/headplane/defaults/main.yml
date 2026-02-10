@@ -1,4 +1,5 @@
 ---
 headplane_version: "latest"
 headplane_data_path: "/opt/services/headplane"
+headscale_data_path: "/opt/services/headscale"
 domain_headscale: "hs.example.com"
