@@ -1,7 +1,7 @@
 # docker-compose.yml Zerobyte — Géré par Ansible
 services:
   zerobyte:
-    image: "ghcr.io/borgbase/vorta-server:{{ zerobyte_version }}"
+    image: "ghcr.io/borgmatic-collective/borgmatic:latest"
     container_name: zerobyte
     restart: unless-stopped
     expose:
