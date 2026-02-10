@@ -16,7 +16,7 @@
 
     - name: Vérifier le Caddyfile (6 vhosts)
       ansible.builtin.command:
-        cmd: grep -c "reverse_proxy" /opt/services/caddy/Caddyfile
+        cmd: grep -c "reverse_proxy" /opt/services/caddy/conf/Caddyfile
       register: caddy_vhost_count
       changed_when: false
 
