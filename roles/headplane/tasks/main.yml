@@ -27,4 +27,4 @@
   community.docker.docker_compose_v2:
     project_src: "{{ headplane_data_path }}"
     state: present
-    recreate: always
+    recreate: auto
