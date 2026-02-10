@@ -17,7 +17,7 @@ env:
   # Type de serveur Hetzner CI (modifiable si la gamme change)
   HCLOUD_SERVER_TYPE: "cx23"
   HCLOUD_IMAGE: "debian-13"
-  # Fallback datacenters : Allemagne (priorité) → Finlande
+  # Fallback locations : Allemagne (priorité) → Finlande
   HCLOUD_DATACENTERS: "fsn1 nbg1 hel1"
   CI_SERVER_NAME: "seko-vpn-ci-${{ github.run_id }}"
 
@@ -137,7 +137,7 @@ jobs:
           ssh-keygen -t ed25519 -f ~/.ssh/ci_key -N "" -C "ci-ephemeral"
           echo "CI_SSH_PUBKEY=$(cat ~/.ssh/ci_key.pub)" >> "$GITHUB_ENV"
 
-      - name: Create Hetzner CI server (with datacenter fallback)
+      - name: Create Hetzner CI server (with location fallback)
         id: create_server
         run: |
           set -euo pipefail
@@ -146,7 +146,7 @@ jobs:
           hcloud ssh-key create --name "$CI_SERVER_NAME" \
             --public-key "$(cat ~/.ssh/ci_key.pub)" 2>/dev/null || true
 
-          # Tenter la création avec fallback datacenters
+          # Tenter la création avec fallback locations
           CREATED=false
           for DC in $HCLOUD_DATACENTERS; do
             echo "🔄 Tentative de création dans $DC..."
@@ -154,13 +154,13 @@ jobs:
               --name "$CI_SERVER_NAME" \
               --type "$HCLOUD_SERVER_TYPE" \
               --image "$HCLOUD_IMAGE" \
-              --datacenter "$DC" \
+              --location "$DC" \
               --ssh-key "$CI_SERVER_NAME" \
               --label "purpose=ci,run=${{ github.run_id }}" \
               2>&1; then
               CREATED=true
               echo "✅ Serveur créé dans $DC"
-              echo "datacenter=$DC" >> "$GITHUB_OUTPUT"
+              echo "location=$DC" >> "$GITHUB_OUTPUT"
               break
             else
               echo "⚠️ Échec dans $DC, fallback..."
@@ -168,7 +168,7 @@ jobs:
           done
 
           if [ "$CREATED" = false ]; then
-            echo "❌ Impossible de créer le serveur dans aucun datacenter"
+            echo "❌ Impossible de créer le serveur dans aucune location"
             exit 1
           fi
 
@@ -176,7 +176,7 @@ jobs:
           CI_IP=$(hcloud server ip "$CI_SERVER_NAME")
           echo "ci_ip=$CI_IP" >> "$GITHUB_OUTPUT"
           echo "CI_IP=$CI_IP" >> "$GITHUB_ENV"
-          echo "📍 Serveur CI : $CI_IP (datacenter: $(hcloud server describe "$CI_SERVER_NAME" -o format='{{.Datacenter.Name}}'))"
+          echo "📍 Serveur CI : $CI_IP (location: $(hcloud server describe "$CI_SERVER_NAME" -o format='{{.Location.Name}}'))"
 
       - name: Wait for SSH readiness
         run: |
