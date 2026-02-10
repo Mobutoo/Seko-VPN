@@ -2,9 +2,10 @@
 
 > Infrastructure Ansible complète : VPN (Headscale), mots de passe (Vaultwarden), Docker UI (Portainer), sauvegardes (Zerobyte), monitoring (Uptime Kuma + Monit), collecteur de logs (Alloy), bot Telegram — le tout derrière Caddy avec SSL automatique.
 
-**Version :** 3.0 · Février 2026
+**Version :** 3.0.0 · Février 2026
 **Public cible :** Techniciens juniors & contributeurs
 **Langue :** Français
+**Statut CI/CD :** ✅ Pipeline validé (lint + 14 rôles Molecule + intégration Hetzner)
 
 ---
 
@@ -16,7 +17,7 @@
 | 2 | [Guide de déploiement](02-guide-deploiement.md) | Procédure pas-à-pas du premier déploiement à la production | Juniors |
 | 3 | [GitOps & CI/CD](03-gitops.md) | Stratégie de branches, pipeline, workflows GitOps, bonnes pratiques | Tous |
 | 4 | [Référence des rôles](04-roles-reference.md) | Les 14 rôles Ansible détaillés : variables, templates, dépendances | Contributeurs |
-| 5 | [Dépannage & Erreurs](05-troubleshooting.md) | Les 25 pièges documentés, messages d'erreur, solutions | Juniors |
+| 5 | [Dépannage & Erreurs](05-troubleshooting.md) | Les 42 pièges documentés (Day 0 → CI/CD Round 5) | Juniors |
 | 6 | [Feuille de route V4](06-v4-roadmap.md) | Axes d'amélioration, priorisation, architecture cible V4 | Tous |
 | 7 | [Glossaire](07-glossaire.md) | Définitions des termes techniques utilisés dans le projet | Juniors |
 
@@ -47,8 +48,8 @@
 
 ```
 14 rôles Ansible · 8 conteneurs Docker · 3 services natifs · 4 scripts
-6 vhosts Caddy · 14 scénarios Molecule · Pipeline CI/CD 3 stages
-~140 fichiers · 25 pièges documentés · ~30h de développement
+6 vhosts Caddy · 14 scénarios Molecule · Pipeline CI/CD 3 stages (validé)
+~140 fichiers · 42 pièges documentés · ~40h de développement
 ```
 
 ---

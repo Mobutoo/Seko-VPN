@@ -222,3 +222,65 @@ roles/<nom>/
 | telegram_bot | Service systemd, venv Python, bot.py exists, `.env` mode 600 |
 
 > **⚠️ Règle absolue :** JAMAIS de `failed_when: false` dans les `verify.yml`. Ça rend le test inopérant (il passe toujours, même si la vérification échoue).
+
+---
+
+## Molecule — Bonnes pratiques CI/CD (REX v3.0.0)
+
+Ces règles sont issues des 5 rounds de debugging du pipeline CI/CD. Elles s'appliquent à TOUS les rôles.
+
+### Règle 1 : Tout `prepare.yml` commence par les prérequis CI
+
+```yaml
+# prepare.yml — bloc obligatoire en début
+- name: Install CI prerequisites
+  ansible.builtin.apt:
+    name:
+      - lsb-release
+      - python3-requests
+      - gnupg
+    state: present
+    update_cache: true
+```
+
+### Règle 2 : Toute tâche `shell` avec pipe → `/bin/bash`
+
+```yaml
+# ❌ Échoue en CI (dash ≠ bash)
+- ansible.builtin.shell:
+    cmd: curl -fsSL ... | gpg ...
+
+# ✅ Fonctionne partout
+- ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      curl -fsSL ... | gpg ...
+```
+
+### Règle 3 : DinD — monter des répertoires, JAMAIS des fichiers
+
+```yaml
+# ❌ Échoue en DinD (le fichier est créé comme répertoire sur l'hôte)
+volumes:
+  - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+# ✅ Fonctionne en DinD
+volumes:
+  - ./conf:/etc/caddy:ro
+```
+
+### Règle 4 : Skip idempotence pour les conteneurs crash-loop
+
+Les conteneurs sans DNS ni config complète crash-loop en CI. Le test d'idempotence donne des faux négatifs. Supprimer `idempotence` du `test_sequence` dans `molecule.yml` pour ces rôles.
+
+### Règle 5 : Services → retries dans verify.yml
+
+```yaml
+- name: Wait for service to be active
+  ansible.builtin.service_facts:
+  register: _svc
+  until: _svc.ansible_facts.services['telegram-bot.service'].state == 'running'
+  retries: 3
+  delay: 5
+```

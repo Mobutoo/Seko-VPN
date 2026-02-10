@@ -18,6 +18,9 @@ Avant de parler du futur, rappelons ce que V3 a ajouté par rapport à V2 :
 | 6 | CI mode local_certs | ✅ V3 |
 | 7 | Docker prune timer | ✅ V3 |
 | 8 | Kernel panic auto-reboot | ✅ V3 |
+| 9 | **Pipeline CI/CD 3 stages validé** (lint + 14 rôles Molecule + intégration Hetzner) | ✅ V3.0.0 |
+| 10 | **42 pièges documentés** (REX Day 0 → Round 5) | ✅ V3.0.0 |
+| 11 | **Bonnes pratiques DinD** (bind mounts, idempotence, Debian 13) | ✅ V3.0.0 |
 
 ---
 

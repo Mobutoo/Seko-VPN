@@ -25,6 +25,9 @@ Outil intégré à Ansible pour chiffrer des fichiers de secrets. Les fichiers c
 **Bootstrap**
 Première étape de préparation d'un serveur. Dans Seko-VPN, `bootstrap-vps.sh` crée l'utilisateur et configure SSH sur un VPS neuf.
 
+**Bind mount**
+Montage d'un fichier ou répertoire de l'hôte dans un conteneur Docker. **Piège DinD :** en Docker-in-Docker, seuls les montages de **répertoires** fonctionnent. Les montages de fichiers individuels créent des répertoires vides sur l'hôte externe.
+
 **Bridge (réseau Docker)**
 Type de réseau Docker qui permet aux conteneurs de communiquer entre eux par leur nom. `proxy-net` est le réseau bridge utilisé par tous les conteneurs Seko-VPN.
 
@@ -181,6 +184,9 @@ Mécanisme du kernel Linux qui tue les processus quand la RAM est épuisée. Le 
 **Pipeline CI**
 Séquence automatisée d'étapes (lint → molecule → integration) qui valide le code à chaque push. Si une étape échoue, le merge est bloqué.
 
+**pipefail**
+Option bash (`set -o pipefail`) qui fait échouer un pipeline de commandes si l'une des commandes échoue (pas seulement la dernière). **Piège CI :** `pipefail` est une option bash uniquement. Les conteneurs Debian utilisent `dash` comme `/bin/sh` par défaut, qui ne supporte pas cette option. Toujours ajouter `executable: /bin/bash` aux tâches Ansible qui utilisent `pipefail`.
+
 **Playbook (Ansible)**
 Fichier YAML qui décrit une séquence de tâches à exécuter sur un ou plusieurs serveurs. `site.yml` est le playbook principal de Seko-VPN.
 
@@ -193,6 +199,9 @@ Réseau Docker bridge partagé par tous les conteneurs de Seko-VPN. Caddy utilis
 ---
 
 ## R
+
+**Release (GitHub)**
+Version publiée du projet avec un tag Git, des notes de version et optionnellement des fichiers joints. Une release doit être créée AVANT tout déploiement en production pour tracer quelle version exacte du code tourne sur le serveur.
 
 **Reverse proxy**
 Serveur qui reçoit les requêtes des clients et les redistribue aux services backend. Caddy est le reverse proxy de Seko-VPN.

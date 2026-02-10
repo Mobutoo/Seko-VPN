@@ -214,12 +214,16 @@ Chaque rôle exécute :
 
 | Type | Rôles | Image | `prepare.yml` requis ? |
 |------|-------|-------|----------------------|
-| Base | common, security | `geerlingguy/docker-debian12-ansible` | Non |
-| Docker (DinD) | docker | `geerlingguy/docker-debian12-ansible` | Non |
-| Conteneur | caddy, headscale, headplane, vaultwarden, portainer, zerobyte, uptime_kuma | `geerlingguy/docker-debian12-ansible` | **Oui** (installe Docker + proxy-net) |
-| Systemd | monit, hardening, alloy, telegram_bot | `trfore/docker-debian12-systemd` | Non |
+| Base | common, security | `geerlingguy/docker-debian12-ansible` | Oui (apt update) |
+| Docker (DinD) | docker | `geerlingguy/docker-debian12-ansible` | Oui (apt update) |
+| Conteneur | caddy, headscale, headplane, vaultwarden, portainer, zerobyte, uptime_kuma | `geerlingguy/docker-debian12-ansible` | **Oui** (apt update + lsb-release + python3-requests + Docker + proxy-net) |
+| Systemd | monit, hardening, alloy, telegram_bot | `trfore/docker-debian12-systemd` | Oui (apt update) |
 
 > **⚠️ Piège critique :** Chaque `converge.yml` DOIT avoir un bloc `vars:` avec des valeurs mock. Molecule ne charge PAS le `inventory/group_vars/`. Sans ce bloc, les rôles échouent avec `undefined variable`.
+
+> **⚠️ Piège DinD (Docker-in-Docker) :** En DinD, ne JAMAIS monter des fichiers individuels dans les `docker-compose.yml`. Monter uniquement des répertoires. Voir [piège 4.12](05-troubleshooting.md#412-dind--bind-mount-de-fichier-impossible).
+
+> **⚠️ Piège Debian 13 :** Les images minimales Debian 13 ne contiennent pas `lsb-release` ni `python3-requests`. Tout `prepare.yml` doit commencer par les installer. Voir [piège 4.6](05-troubleshooting.md#46-lsb-release-absent-sur-debian-13).
 
 ### Stage 3 : Integration (branche `main` uniquement)
 
@@ -573,13 +577,95 @@ git push origin develop
 ### Avant de déployer en production
 
 - [ ] `main` est à jour (`git pull`)
+- [ ] **Un tag de release a été créé** (`git tag -a vX.Y.Z`)
+- [ ] **Le tag est poussé** (`git push origin vX.Y.Z`)
+- [ ] **La GitHub Release est publiée** (avec release notes)
 - [ ] Les DNS sont en place (si nouveaux domaines)
 - [ ] Le mot de passe vault est prêt
 - [ ] Un test post-déploiement est planifié (/status Telegram, URLs)
 
 ---
 
-## 12. Bonnes pratiques GitOps récapitulées
+## 12. Release et versioning
+
+### Convention de versioning (SemVer)
+
+```
+v<MAJOR>.<MINOR>.<PATCH>
+
+v3.0.0 → Première release avec pipeline CI/CD validé
+v3.1.0 → Ajout d'une fonctionnalité (nouveau rôle, nouvelle commande bot)
+v3.0.1 → Correction de bug sans changement fonctionnel
+```
+
+### Procédure de release complète
+
+```bash
+# 1. S'assurer que main est stable et CI 100% vert
+git checkout main
+git pull origin main
+
+# 2. Vérifier que la CI est passée sur le dernier commit
+#    → GitHub → Actions → le dernier workflow doit être ✅
+
+# 3. Mettre à jour la documentation si nécessaire
+#    → docs/, README.md, CHANGELOG.md
+
+# 4. Créer le tag annoté (localement)
+git tag -a v3.0.0 -m "Release v3.0.0 — Pipeline CI/CD validé, 14 rôles Molecule, intégration Hetzner"
+
+# 5. Pousser le tag vers GitHub
+git push origin v3.0.0
+
+# 6. Créer la GitHub Release
+#    → GitHub → Releases → "Create a new release"
+#    → Choisir le tag v3.0.0
+#    → Titre : "v3.0.0 — Pipeline CI/CD complet"
+#    → Coller les release notes (voir template ci-dessous)
+#    → Cocher "Set as the latest release"
+#    → Publier
+
+# 7. Déployer depuis le tag
+git checkout v3.0.0
+ansible-playbook playbooks/site.yml --ask-vault-pass
+```
+
+### Quand créer une release ?
+
+| Situation | Action |
+|-----------|--------|
+| Pipeline CI 100% vert + prêt à déployer en prod | **Release MAJEURE/MINEURE** |
+| Hotfix urgent déployé en prod | **Release PATCH** |
+| Feature branch mergée dans develop | Pas de release (pas encore en prod) |
+
+### Template de release notes
+
+```markdown
+## 🚀 Nouveautés
+- [liste des nouvelles fonctionnalités]
+
+## 🐛 Corrections
+- [liste des bugs corrigés]
+
+## 🔧 Améliorations CI/CD
+- [changements pipeline]
+
+## 📚 Documentation
+- [docs mises à jour]
+
+## ⚠️ Breaking Changes
+- [si applicable]
+
+## 📦 Déploiement
+git checkout v3.x.x
+ansible-playbook playbooks/site.yml --ask-vault-pass
+```
+
+> **💡 Règle d'or :** Pas de déploiement en production sans tag de release. Le tag est la preuve que le code a passé la CI et est prêt pour la prod.
+
+---
+
+## 13. Bonnes pratiques GitOps récapitulées
 
 | # | Règle | Pourquoi |
 |---|-------|---------|

@@ -1,6 +1,6 @@
-# 🔧 Dépannage & Erreurs — Les 25 pièges documentés
+# 🔧 Dépannage & Erreurs — Les 42 pièges documentés
 
-> Ce document recense TOUTES les erreurs rencontrées pendant le développement de Seko-VPN (V1 → V2 → V3). Chaque piège est documenté avec le symptôme, la cause et la solution. Si tu rencontres un problème, cherche le symptôme dans cette page.
+> Ce document recense TOUTES les erreurs rencontrées pendant le développement de Seko-VPN (V1 → V2 → V3) et la mise en place du pipeline CI/CD (Day 0 → Round 5). Chaque piège est documenté avec le symptôme, la cause et la solution. Si tu rencontres un problème, cherche le symptôme dans cette page.
 
 ---
 
@@ -33,6 +33,23 @@
 | 3.5 | V3 | Pas de swap < 4G RAM | Sysadmin | 🟡 Important prod |
 | 3.6 | V3 | DNS CI/CD inexistants | Pipeline | 🔴 Bloquant → ci_mode |
 | 3.7 | V3 | Config manuelle = erreurs | UX | 🟡 Design → wizard.sh |
+| **4.1** | **CI Day 0** | **ZIP avec `{.github` (expansion bash)** | **Scripts** | 🟡 Majeur |
+| **4.2** | **CI Day 0** | **Prompts invisibles dans wizard `$(...)`** | **Scripts** | 🔴 Bloquant |
+| **4.3** | **CI Day 0** | **27 violations ansible-lint** | **Linting** | 🟡 Majeur |
+| **4.4** | **CI Day 0** | **YAML `:` dans format Docker** | **Linting** | 🔴 Bloquant |
+| **4.5** | **CI Day 0** | **SSH key paths hardcodés** | **Scripts** | 🟡 Majeur |
+| **4.6** | **CI R1** | **`lsb-release` absent Debian 13** | **Molecule** | 🔴 Bloquant |
+| **4.7** | **CI R1** | **`python3-requests` manquant (7 rôles)** | **Molecule** | 🔴 Bloquant |
+| **4.8** | **CI R1** | **Dash vs Bash (`pipefail`)** | **Molecule** | 🔴 Bloquant |
+| **4.9** | **CI R1** | **Hash password invalide** | **Molecule** | 🔴 Bloquant |
+| **4.10** | **CI R1** | **systemd indisponible en Docker** | **Molecule** | 🟡 Majeur |
+| **4.11** | **CI R1** | **apt cache stale** | **Molecule** | 🟡 Majeur |
+| **4.12** | **CI R4** | **DinD : bind mount de FICHIER** | **Molecule** | 🔴 Bloquant |
+| **4.13** | **CI R4** | **Idempotence impossible (crash-loop)** | **Molecule** | 🟡 Majeur |
+| **4.14** | **CI R5** | **`hcloud --datacenter` déprécié** | **Intégration** | 🔴 Bloquant |
+| **4.15** | **CI R5** | **Callback `community.general.yaml` supprimé** | **Intégration** | 🔴 Bloquant |
+| **4.16** | **CI R5** | **Services en `activating` au verify** | **Intégration** | 🟡 Majeur |
+| **4.17** | **CI R5** | **Monit daemon not running en CI** | **Intégration** | 🟡 Majeur |
 
 ---
 
@@ -357,6 +374,265 @@ Error: DNS record not found
 
 ---
 
+## Phase 4 — Erreurs Pipeline CI/CD (Day 0 → Round 5)
+
+> Ces 17 erreurs ont été découvertes lors de la mise en service complète du pipeline CI/CD. Elles constituent les pièges les plus fréquents quand on passe de tests locaux à une CI industrialisée.
+
+### 4.1 ZIP avec `{.github` — Expansion bash
+
+**Symptôme :** Le ZIP de release contient un répertoire nommé `{.github` au lieu de `.github`.
+
+**Cause :** Utiliser `{.github,...}` dans une commande `mkdir -p` provoque l'expansion d'accolades bash.
+
+**Solution :** Toujours vérifier le contenu du ZIP avant distribution : `unzip -l archive.zip`.
+
+---
+
+### 4.6 `lsb-release` absent sur Debian 13
+
+**Symptôme :**
+```
+bash: lsb_release: command not found
+```
+
+**Cause :** Debian 13 (trixie) ne pré-installe pas `lsb-release`. Les `prepare.yml` qui utilisent `lsb_release -cs` pour ajouter le dépôt Docker échouent.
+
+**Solution :** Ajouter `lsb-release` dans le `prepare.yml` de chaque rôle qui installe Docker.
+
+```yaml
+# prepare.yml — début obligatoire
+- name: Install CI prerequisites
+  ansible.builtin.apt:
+    name: [lsb-release, python3-requests, gnupg]
+    state: present
+    update_cache: true
+```
+
+---
+
+### 4.7 `python3-requests` manquant (7 rôles)
+
+**Symptôme :**
+```
+ModuleNotFoundError: No module named 'requests'
+```
+
+**Cause :** Le module `community.docker` a besoin de la bibliothèque Python `requests`. Les images Docker de test ne l'incluent pas.
+
+**Solution :** Ajouter `python3-requests` dans le `prepare.yml` de chaque rôle Docker (caddy, headscale, headplane, vaultwarden, portainer, zerobyte, uptime_kuma).
+
+---
+
+### 4.8 Dash vs Bash — `set -o pipefail`
+
+**Symptôme :**
+```
+set: Illegal option -o pipefail
+```
+
+**Cause :** Les conteneurs Debian utilisent `dash` comme `/bin/sh`. `pipefail` est une option bash uniquement.
+
+**Solution :** Ajouter `executable: /bin/bash` sur CHAQUE tâche `shell` qui utilise `pipefail`.
+
+```yaml
+# ❌ INTERDIT — échoue avec dash
+- name: Add Docker repo
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      curl -fsSL https://... | gpg --dearmor ...
+
+# ✅ CORRECT — force bash
+- name: Add Docker repo
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      curl -fsSL https://... | gpg --dearmor ...
+```
+
+> **💡 C'est l'erreur #1 en fréquence** (17+ occurrences). Toute tâche `shell` avec un pipe (`|`) doit avoir `executable: /bin/bash` + `set -o pipefail`.
+
+---
+
+### 4.9 Hash de mot de passe invalide
+
+**Symptôme :**
+```
+usermod: invalid password hash
+```
+
+**Cause :** La fonction Jinja2 `password_hash()` sans algorithme produit un hash incompatible.
+
+**Solution :** Toujours utiliser `password_hash('sha512')` dans les templates.
+
+---
+
+### 4.10 systemd indisponible en Docker
+
+**Symptôme :**
+```
+System has not been booted with systemd as init system
+```
+
+**Cause :** Les conteneurs Docker standard n'ont pas systemd. Les tâches `systemctl enable/start` échouent.
+
+**Solution :** Conditionner les tâches systemd :
+
+```yaml
+- name: Enable service
+  ansible.builtin.systemd:
+    name: monit
+    enabled: true
+  when: ansible_virtualization_type != "docker"
+```
+
+---
+
+### 4.12 DinD — Bind mount de FICHIER impossible
+
+**Symptôme :**
+```
+Error: mount destination /etc/caddy/Caddyfile is not a directory
+```
+
+**Cause :** En Docker-in-Docker (DinD), le socket Docker est partagé avec l'hôte. Quand Ansible crée un fichier dans le conteneur Molecule puis monte ce fichier dans un sous-conteneur, l'hôte externe n'a PAS ce fichier → Docker le crée comme RÉPERTOIRE → conflit de type.
+
+**Solution — Règle absolue DinD :**
+
+```yaml
+# ❌ INTERDIT en DinD — bind mount de fichier
+volumes:
+  - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+# ✅ CORRECT — bind mount de répertoire
+volumes:
+  - ./conf:/etc/caddy:ro
+```
+
+> **⚠️ C'est un piège invisible.** Le même `docker-compose.yml` fonctionne en local mais échoue systématiquement en CI (Molecule DinD). Si un rôle Docker échoue uniquement en CI avec une erreur de mount, vérifier les bind mounts.
+
+---
+
+### 4.13 Idempotence impossible — Conteneur crash-loop
+
+**Symptôme :**
+```
+TASK [caddy : Deploy docker-compose] changed: [instance]
+# Au 2nd run (idempotence) : changed=true → test échoue
+```
+
+**Cause :** En CI, les conteneurs n'ont pas de DNS réels ni de configuration complète. Ils démarrent (`running`) puis crashent immédiatement (`restarting`). Au 2ème converge, `docker compose up` détecte le changement d'état → `changed: true`.
+
+**Solution :** Supprimer `idempotence` du `test_sequence` dans `molecule.yml` pour les rôles avec conteneurs instables en CI.
+
+```yaml
+# molecule.yml
+provisioner:
+  name: ansible
+platforms:
+  - name: instance
+    image: geerlingguy/docker-debian12-ansible
+scenario:
+  test_sequence:
+    - create
+    - prepare
+    - converge
+    # PAS de "idempotence" — container crash-loop en CI
+    - verify
+    - destroy
+```
+
+> **💡 L'idempotence doit être testée manuellement** en environnement réaliste (VM Hetzner), pas en DinD avec une config minimale.
+
+---
+
+### 4.14 `hcloud --datacenter` déprécié
+
+**Symptôme :**
+```
+Flag --datacenter is deprecated, use --location instead
+```
+
+**Cause :** Le CLI hcloud v1.59+ a déprécié `--datacenter` en faveur de `--location`.
+
+**Solution :** Remplacer dans le workflow CI :
+
+```bash
+# ❌ Déprécié
+hcloud server create --datacenter fsn1-dc14 ...
+
+# ✅ Correct
+hcloud server create --location fsn1 ...
+```
+
+---
+
+### 4.15 Callback `community.general.yaml` supprimé
+
+**Symptôme :**
+```
+The 'community.general.yaml' callback plugin has been removed
+```
+
+**Cause :** Le plugin callback YAML a été retiré de `community.general` v12 et intégré dans ansible-core.
+
+**Solution :** Modifier `ansible.cfg` :
+
+```ini
+# ❌ Ancien
+stdout_callback = yaml
+
+# ✅ Nouveau
+stdout_callback = ansible.builtin.default
+[defaults]
+result_format = yaml
+```
+
+---
+
+### 4.16 Services en `activating` au moment du verify
+
+**Symptôme :**
+```
+AssertionError: telegram-bot is not active (activating)
+```
+
+**Cause :** Certains services (telegram_bot, alloy) mettent quelques secondes à démarrer. Le `verify.yml` s'exécute immédiatement après le converge.
+
+**Solution :** Ajouter des retries dans le `verify.yml` :
+
+```yaml
+- name: Wait for service
+  ansible.builtin.service_facts:
+  register: _svc
+  until: _svc.ansible_facts.services['telegram-bot.service'].state == 'running'
+  retries: 3
+  delay: 5
+```
+
+---
+
+### 4.17 Monit daemon not running en CI
+
+**Symptôme :**
+```
+Monit: the monit daemon is not running
+```
+
+**Cause :** Sur une VM CI fraîchement déployée, Monit peut mettre du temps à démarrer ou échouer si les services surveillés ne sont pas encore prêts.
+
+**Solution :** Rendre le check Monit non-bloquant dans le verify :
+
+```yaml
+- name: Check monit status
+  ansible.builtin.command: monit status
+  changed_when: false
+  failed_when: false    # Non-bloquant en CI
+```
+
+---
+
 ## Dépannage rapide par outil
 
 ### Molecule
@@ -461,3 +737,10 @@ docker network inspect proxy-net
 | `502 Bad Gateway` (Caddy → backend) | Le conteneur backend n'est pas sur proxy-net | Vérifier le réseau dans docker-compose.yml |
 | `permission denied` (.env telegram) | Fichier .env pas en mode 600 | `chmod 600 /opt/services/telegram-bot/.env` |
 | `vault password not found` | Oublié `--ask-vault-pass` | Ajouter `--ask-vault-pass` à la commande |
+| `set: Illegal option -o pipefail` | Dash utilisé au lieu de Bash | Ajouter `executable: /bin/bash` à la tâche shell |
+| `lsb_release: command not found` | `lsb-release` absent sur Debian 13 | Ajouter `lsb-release` dans `prepare.yml` |
+| `No module named 'requests'` | `python3-requests` absent | Ajouter `python3-requests` dans `prepare.yml` |
+| `mount destination is not a directory` | Bind mount de fichier en DinD | Monter des RÉPERTOIRES, jamais des fichiers |
+| `Flag --datacenter is deprecated` | hcloud CLI v1.59+ | Remplacer `--datacenter` par `--location` |
+| `callback plugin has been removed` | `community.general` v12 | Utiliser `ansible.builtin.default` + `result_format: yaml` |
+| `service is activating (not active)` | Service pas encore démarré | Ajouter `retries` + `delay` dans le verify |

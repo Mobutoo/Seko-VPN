@@ -33,11 +33,15 @@ Avant de commencer, vérifie que tu as :
     │
 Étape 4 : bootstrap-vps.sh → Prépare le VPS (utilisateur + SSH + sudo)
     │
-Étape 5 : site.yml → Déploie les 14 rôles
+Étape 5 : Vérifier que la CI est 100% verte
     │
-Étape 6 : Vérification (Uptime Kuma + Telegram)
+Étape 6 : Créer une release (tag + GitHub Release)
     │
-Étape 7 : harden-ssh.yml → Durcit SSH (désactive root, change port)
+Étape 7 : site.yml → Déploie les 14 rôles depuis le tag
+    │
+Étape 8 : Vérification (Uptime Kuma + Telegram)
+    │
+Étape 9 : harden-ssh.yml → Durcit SSH (désactive root, change port)
     │
     ▼
 Production ✅
@@ -175,7 +179,31 @@ Ce script se connecte en root à ton VPS et crée l'utilisateur qui sera utilis�
 
 ---
 
-## Étape 5 — Déployer l'infrastructure
+## Étape 5 — Vérifier la CI et créer une release
+
+Avant de déployer, on s'assure que le pipeline CI a validé le code, puis on crée un tag de release.
+
+### Vérifier la CI
+
+Va sur GitHub → Actions → vérifie que le dernier workflow sur `main` est ✅ (les 3 stages : lint, molecule, integration).
+
+### Créer la release
+
+```bash
+# Créer le tag annoté
+git tag -a v3.0.0 -m "Release v3.0.0 — Pipeline CI/CD validé"
+
+# Pousser le tag
+git push origin v3.0.0
+```
+
+Puis sur GitHub → Releases → "Create a new release" → sélectionner le tag → rédiger les notes → publier.
+
+> **💡 Pourquoi ?** Le tag fige l'état exact du code qui a passé la CI. Si le déploiement échoue, tu sais précisément quelle version tu as déployée. C'est aussi la base pour les rollbacks (`git checkout v3.0.0`).
+
+---
+
+## Étape 6 — Déployer l'infrastructure
 
 C'est LA commande principale. Elle exécute les 14 rôles dans l'ordre.
 
@@ -220,7 +248,7 @@ vps    : ok=89   changed=42   unreachable=0   failed=0   skipped=3   rescued=0
 
 ---
 
-## Étape 6 — Vérifier le déploiement
+## Étape 7 — Vérifier le déploiement
 
 ### Vérification automatisée
 
@@ -242,11 +270,11 @@ ansible-playbook playbooks/verify.yml --ask-vault-pass
 | Bot Telegram | Envoyer `/containers` | Liste des 8 conteneurs |
 | SSH Monit | `ssh serveur` puis `sudo monit status` | État de tous les services |
 
-> **⚠️ IMPORTANT :** Vérifie bien que TOUT fonctionne avant de passer à l'étape 7. L'étape 7 modifie SSH et pourrait te verrouiller si quelque chose ne va pas.
+> **⚠️ IMPORTANT :** Vérifie bien que TOUT fonctionne avant de passer à l'étape 8. L'étape 8 modifie SSH et pourrait te verrouiller si quelque chose ne va pas.
 
 ---
 
-## Étape 7 — Durcir SSH (APRÈS validation)
+## Étape 8 — Durcir SSH (APRÈS validation)
 
 **UNIQUEMENT quand tout fonctionne :**
 

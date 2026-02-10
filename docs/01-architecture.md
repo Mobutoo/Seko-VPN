@@ -312,7 +312,7 @@ Les 14 rôles s'exécutent dans un ordre précis (défini dans `playbooks/site.y
 
 | Élément | Minimum | Recommandé |
 |---------|---------|------------|
-| OS | Debian 12 | Debian 13 |
+| OS | Debian 12 | Debian 13 (testé en CI) |
 | CPU | 2 vCPU | 2+ vCPU |
 | RAM | 2 Go | 4 Go |
 | Disque | 20 Go | 40 Go |
