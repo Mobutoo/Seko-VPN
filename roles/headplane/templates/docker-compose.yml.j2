@@ -9,7 +9,7 @@ services:
     volumes:
       - "{{ headplane_data_path }}/config.yaml:/etc/headplane/config.yaml:ro"
       - "{{ headplane_data_path }}/data:/var/lib/headplane"
-      - "{{ headscale_data_path }}/config/config.yaml:/etc/headscale/config.yaml:ro"
+      - "{{ headscale_data_path }}/config/config.yaml:/etc/headscale/config.yaml:rw"
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     labels:
       me.tale.headplane.target: "headscale"
