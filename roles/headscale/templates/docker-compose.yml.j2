@@ -7,6 +7,8 @@ services:
     command: serve
     expose:
       - "8080"
+    ports:
+      - "3478:3478/udp"
     volumes:
       - ./config:/etc/headscale
       - headscale_data:/var/lib/headscale

@@ -10,7 +10,13 @@ prefixes:
   v6: fd7a:115c:a1e0::/48
 derp:
   server:
-    enabled: false
+    enabled: true
+    region_id: 999
+    region_code: "seko"
+    region_name: "Seko VPN Self-Hosted"
+    stun_listen_addr: 0.0.0.0:3478
+    automatically_add_embedded_derp_region: true
+    ipv4: {{ server_ip }}
   urls: []
   paths: []
   auto_update_enabled: false
