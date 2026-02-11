@@ -22,10 +22,13 @@ database:
 dns:
   magic_dns: true
   base_domain: headscale.net
+  override_local_dns: false
   nameservers:
     global:
       - 1.1.1.1
       - 8.8.8.8
     split: {}
+  search_domains: []
+  extra_records: []
 log:
   level: info
