@@ -321,6 +321,15 @@ jobs:
           echo "${{ secrets.VAULT_PASSWORD }}" > /tmp/.vault-pass
           chmod 600 /tmp/.vault-pass
 
+      - name: Debug SSH key
+        run: |
+          echo "Key file exists:"
+          ls -la ~/.ssh/deploy_key 2>&1 || echo "FILE MISSING"
+          echo "Key size:"
+          wc -c ~/.ssh/deploy_key 2>&1 || echo "CANNOT READ"
+          echo "First line:"
+          head -1 ~/.ssh/deploy_key 2>&1 || echo "EMPTY"
+
       - name: Deploy to production
         run: |
           ansible-playbook playbooks/site.yml \
