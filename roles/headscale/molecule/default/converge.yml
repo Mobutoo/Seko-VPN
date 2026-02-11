@@ -6,5 +6,6 @@
     headscale_version: "0.26.0"
     headscale_data_path: "/opt/services/headscale"
     domain_headscale: "hs.ci-test.local"
+    server_ip: "127.0.0.1"
   roles:
     - role: headscale
