@@ -22,7 +22,7 @@ database:
     path: /var/lib/headscale/db.sqlite
 dns:
   magic_dns: true
-  base_domain: headscale.net
+  base_domain: {{ domain_headscale }}
   override_local_dns: false
   nameservers:
     global:
