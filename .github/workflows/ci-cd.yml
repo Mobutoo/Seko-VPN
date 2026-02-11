@@ -303,11 +303,6 @@ jobs:
           pip install -r requirements-dev.txt
           ansible-galaxy collection install -r requirements.yml
 
-#      - name: Setup deploy SSH key
-#        run: |
-#          mkdir -p ~/.ssh
-#         echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/seko-vpn-deploy
-#          chmod 600 ~/.ssh/seko-vpn-deploy
       - name: Setup deploy SSH key
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -324,17 +319,17 @@ jobs:
       - name: Debug SSH key
         run: |
           echo "Key file exists:"
-          ls -la ~/.ssh/deploy_key 2>&1 || echo "FILE MISSING"
+          ls -la ~/.ssh/seko-vpn-deploy 2>&1 || echo "FILE MISSING"
           echo "Key size:"
-          wc -c ~/.ssh/deploy_key 2>&1 || echo "CANNOT READ"
+          wc -c ~/.ssh/seko-vpn-deploy 2>&1 || echo "CANNOT READ"
           echo "First line:"
-          head -1 ~/.ssh/deploy_key 2>&1 || echo "EMPTY"
+          head -1 ~/.ssh/seko-vpn-deploy 2>&1 || echo "EMPTY"
 
       - name: Deploy to production
         run: |
           ansible-playbook playbooks/site.yml \
             --vault-password-file /tmp/.vault-pass \
-            --private-key ~/.ssh/deploy_key \
+            --private-key ~/.ssh/seko-vpn-deploy \
             --diff
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -344,7 +339,7 @@ jobs:
         run: |
           ansible-playbook playbooks/verify.yml \
             --vault-password-file /tmp/.vault-pass \
-            --private-key ~/.ssh/deploy_key
+            --private-key ~/.ssh/seko-vpn-deploy
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
           ANSIBLE_FORCE_COLOR: "true"
@@ -352,4 +347,4 @@ jobs:
       - name: Cleanup secrets
         if: always()
         run: |
-          rm -f ~/.ssh/deploy_key /tmp/.vault-pass
+          rm -f ~/.ssh/seko-vpn-deploy /tmp/.vault-pass
