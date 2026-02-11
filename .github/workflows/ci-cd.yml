@@ -318,26 +318,6 @@ jobs:
           printenv VAULT_PASS | tr -d '\n' > /tmp/.vault-pass
           chmod 600 /tmp/.vault-pass
 
-      - name: Debug SSH key
-        run: |
-          echo "Key file exists:"
-          ls -la ~/.ssh/seko-vpn-deploy 2>&1 || echo "FILE MISSING"
-          echo "Key size:"
-          wc -c ~/.ssh/seko-vpn-deploy 2>&1 || echo "CANNOT READ"
-          echo "First line:"
-          head -1 ~/.ssh/seko-vpn-deploy 2>&1 || echo "EMPTY"
-
-      - name: Debug vault decryption
-        run: |
-          echo "Vault password file size:"
-          wc -c /tmp/.vault-pass
-          echo "Vault password hex dump:"
-          xxd /tmp/.vault-pass
-          echo "Vault decryption test:"
-          ansible-vault view inventory/group_vars/all/vault.yml \
-            --vault-password-file /tmp/.vault-pass > /dev/null \
-            && echo "VAULT OK" || echo "VAULT DECRYPTION FAILED"
-
       - name: Deploy to production
         run: |
           ansible-playbook playbooks/site.yml \

@@ -2,10 +2,10 @@
 data/
 **/data/
 
-# Ignorer les fichiers de secrets Ansible
-vault.yml
+# Ignorer les fichiers de secrets Ansible (non chiffres)
+# Note: vault.yml est chiffre (AES256) et DOIT etre dans le repo
+# pour que le deploy CI/CD fonctionne
 secrets.yml
-*.vault
 
 # Ignorer les fichiers de configuration contenant des mots de passe
 config.yaml
