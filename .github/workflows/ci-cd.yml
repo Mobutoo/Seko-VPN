@@ -331,9 +331,11 @@ jobs:
         run: |
           echo "Vault password file size:"
           wc -c /tmp/.vault-pass
+          echo "Vault password hex dump:"
+          xxd /tmp/.vault-pass
           echo "Vault decryption test:"
           ansible-vault view inventory/group_vars/all/vault.yml \
-            --vault-password-file /tmp/.vault-pass > /dev/null 2>&1 \
+            --vault-password-file /tmp/.vault-pass > /dev/null \
             && echo "VAULT OK" || echo "VAULT DECRYPTION FAILED"
 
       - name: Deploy to production
