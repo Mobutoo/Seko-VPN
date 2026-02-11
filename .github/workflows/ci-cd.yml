@@ -312,8 +312,10 @@ jobs:
           chmod 600 ~/.ssh/seko-vpn-deploy
 
       - name: Write vault password file
+        env:
+          VAULT_PASS: ${{ secrets.VAULT_PASSWORD }}
         run: |
-          echo "${{ secrets.VAULT_PASSWORD }}" > /tmp/.vault-pass
+          printenv VAULT_PASS | tr -d '\n' > /tmp/.vault-pass
           chmod 600 /tmp/.vault-pass
 
       - name: Debug SSH key
@@ -324,6 +326,15 @@ jobs:
           wc -c ~/.ssh/seko-vpn-deploy 2>&1 || echo "CANNOT READ"
           echo "First line:"
           head -1 ~/.ssh/seko-vpn-deploy 2>&1 || echo "EMPTY"
+
+      - name: Debug vault decryption
+        run: |
+          echo "Vault password file size:"
+          wc -c /tmp/.vault-pass
+          echo "Vault decryption test:"
+          ansible-vault view inventory/group_vars/all/vault.yml \
+            --vault-password-file /tmp/.vault-pass > /dev/null 2>&1 \
+            && echo "VAULT OK" || echo "VAULT DECRYPTION FAILED"
 
       - name: Deploy to production
         run: |
