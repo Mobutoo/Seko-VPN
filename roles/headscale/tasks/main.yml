@@ -8,10 +8,17 @@
     - "{{ headscale_data_path }}"
     - "{{ headscale_data_path }}/config"
 
-- name: Déployer la configuration Headscale
+- name: Deployer la configuration Headscale
   ansible.builtin.template:
     src: config.yaml.j2
     dest: "{{ headscale_data_path }}/config/config.yaml"
+    mode: "0644"
+  notify: Restart headscale
+
+- name: Deployer la policy ACL Headscale
+  ansible.builtin.template:
+    src: policy.json.j2
+    dest: "{{ headscale_data_path }}/config/policy.json"
     mode: "0644"
   notify: Restart headscale
 
