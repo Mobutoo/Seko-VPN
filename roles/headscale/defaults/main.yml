@@ -2,4 +2,5 @@
 headscale_version: "0.26.0"
 headscale_data_path: "/opt/services/headscale"
 domain_headscale: "hs.example.com"
+headscale_base_domain: "vpn.example.com"
 server_ip: "127.0.0.1"
