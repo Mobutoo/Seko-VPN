@@ -15,5 +15,7 @@
     domain_zerobyte: "backup.ci-test.local"
     domain_uptime_kuma: "status.ci-test.local"
     ssh_custom_port: 804
+    uptime_kuma_admin_username: "admin"
+    vault_uptime_kuma_admin_password: "ci-test-password-123"
   roles:
     - role: telegram_bot

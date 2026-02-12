@@ -19,10 +19,10 @@ MONITORS = [
     {
         "name": "Headscale API",
         "type": MonitorType.HTTP,
-        "url": "https://{{ domain_headscale }}",
+        "url": "https://{{ domain_headscale }}/api/v1/apikey",
         "interval": 60,
         "maxretries": 3,
-        "accepted_statuscodes": ["200-299", "401"],
+        "accepted_statuscodes": ["401"],
     },
     {
         "name": "Headplane UI",

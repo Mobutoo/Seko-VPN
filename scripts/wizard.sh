@@ -74,6 +74,7 @@ collect_info() {
     TELEGRAM_TOKEN=$(ask "Token du bot Telegram"); TELEGRAM_CHAT_ID=$(ask "Chat ID Telegram")
 
     header "Configuration Uptime Kuma"
+    warn "Le nom d'utilisateur est sensible à la casse (admin ≠ Admin)"
     UPTIME_KUMA_ADMIN_USER=$(ask "Nom d'utilisateur admin Uptime Kuma" "admin")
     SECRET_UPTIME_KUMA_PASSWORD=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 16)
     success "Mot de passe admin Uptime Kuma généré"

@@ -650,6 +650,57 @@ Monit: the monit daemon is not running
 | **5.9** | **Molecule** | **server_ip undefined dans converge** | Bloquant |
 | **5.10** | **Headplane** | **Timeout 408 apres restart Headscale** | Majeur |
 | **5.11** | **Headscale CLI** | **--user attend un ID numerique (0.26.0)** | Mineur |
+| **5.12** | **Uptime Kuma** | **Username case-sensitive → monitors non crees** | Bloquant |
+| **5.13** | **Uptime Kuma** | **Sonde Headscale API DOWN (404 sur /)** | Majeur |
+
+### 5.12 Uptime Kuma — Username case-sensitive, monitors non crees
+
+**Symptome :**
+```
+INFO: Login failed (Incorrect username or password.), trying setup...
+WARNING: Uptime Kuma already initialized with different credentials. Skipping monitor configuration.
+Summary: 0 created, 0 already existed (skipped)
+```
+
+**Cause :** Le nom d'utilisateur admin Uptime Kuma est **sensible a la casse**. Si le vault contient `uptime_kuma_admin_username: "admin"` mais que l'instance a ete creee avec `"Admin"` ou un autre username, le script de configuration des monitors est ignore silencieusement (exit 0 sans erreur, mais 0 monitor cree).
+
+Le piege est double :
+1. Le script ne crash pas → Ansible ne detecte pas l'echec
+2. Le `changed_when` cherche `"0 created"` dans la sortie → la tache est marquee `ok` (pas `changed`)
+
+**Solution :**
+```bash
+# 1. Verifier le username reel dans Uptime Kuma (UI web)
+# 2. Mettre a jour le vault
+ansible-vault edit inventory/group_vars/all/vault.yml
+# Corriger : uptime_kuma_admin_username: "le_vrai_username"
+
+# 3. Redeployer le role
+ansible-playbook playbooks/site.yml --tags uptime_kuma --ask-vault-pass
+```
+
+> **⚠️ Le wizard affiche un avertissement** sur la casse lors de la saisie du username. Pour les instances existantes, verifier le username exact dans l'interface web d'Uptime Kuma (Settings → General).
+
+---
+
+### 5.13 Uptime Kuma — Sonde Headscale API DOWN (404 sur /)
+
+**Symptome :** La sonde "Headscale API" est en DOWN permanent dans Uptime Kuma alors que Headscale fonctionne normalement.
+
+**Cause :** Headscale 0.26 renvoie **404 sur `/`** (pas de page d'accueil). La sonde pointait vers `https://singa.example.com` et n'acceptait que `200-299` et `401`.
+
+**Diagnostic :**
+```bash
+# 404 sur / — normal pour Headscale 0.26
+curl -sI https://singa.example.com
+# HTTP/2 404
+
+# 401 sur /api/v1/apikey — preuve que le service tourne
+curl -sI https://singa.example.com/api/v1/apikey
+# HTTP/2 401
+```
+
+**Solution :** La sonde pointe desormais vers `/api/v1/apikey` avec le code attendu `401`. Si Headscale est down, l'endpoint ne repond pas 401 → alerte DOWN.
 
 ---
 
@@ -770,3 +821,5 @@ docker network inspect proxy-net
 | `Cannot convert undefined or null to object` (Headplane) | Champs DNS manquants dans config Headscale | Ajouter `split: {}`, `search_domains: []`, `extra_records: []` |
 | `Timed out waiting for Headscale API` (408) | Headplane demarre avant Headscale | `docker restart headplane` apres restart Headscale |
 | `invalid argument for --user flag` | Headscale 0.26.0 veut un ID numerique | `headscale users list` pour obtenir l'ID |
+| `Skipping monitor configuration` (Uptime Kuma) | Username case-sensitive (`admin` ≠ `Admin`) | Corriger `uptime_kuma_admin_username` dans le vault |
+| Sonde Headscale API DOWN (Uptime Kuma) | Headscale 0.26 renvoie 404 sur `/` | Pointer la sonde vers `/api/v1/apikey` (attend 401) |

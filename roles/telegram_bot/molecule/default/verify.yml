@@ -59,3 +59,14 @@
       ansible.builtin.assert:
         that:
           - telegram_bot_domain_count.stdout | int >= 6
+
+    - name: "Vérifier les variables Uptime Kuma dans .env"
+      ansible.builtin.command:
+        cmd: grep -c "UPTIME_KUMA_" /opt/services/telegram-bot/.env
+      register: telegram_bot_uk_count
+      changed_when: false
+
+    - name: "Valider les 2 variables Uptime Kuma dans .env"
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_uk_count.stdout | int >= 2

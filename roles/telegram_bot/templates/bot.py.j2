@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Bot Telegram interactif — Seko-VPN V3.2
-20 commandes : status, services, containers, disk, memory, cpu, network,
-logs, restart, uptime, updates, backup, ssl, vpn, security, mute, unmute, ack, quick, help
+25 commandes : menu, status, services, containers, disk, memory, cpu, network,
+logs, restart, uptime, updates, backup, ssl, vpn, security, mute, unmute, ack,
+monitors, ukpause, ukresume, maintenance, quick, help
 """
 import json
 import logging
@@ -40,6 +41,11 @@ DOMAINS = {
     "uptime-kuma": os.environ.get("DOMAIN_UPTIME_KUMA", ""),
 }
 SSH_PORT = os.environ.get("SSH_PORT", "22")
+
+# Uptime Kuma API
+UPTIME_KUMA_URL = "http://127.0.0.1:3001"
+UPTIME_KUMA_USER = os.environ.get("UPTIME_KUMA_USERNAME", "admin")
+UPTIME_KUMA_PASS = os.environ.get("UPTIME_KUMA_PASSWORD", "")
 
 MUTE_FILE = Path("/tmp/seko-mute.json")
 DOCKER_SERVICES = [
@@ -127,6 +133,17 @@ def clear_mute():
     MUTE_FILE.unlink(missing_ok=True)
 
 
+def get_uptime_kuma_api():
+    """Connecte et login a Uptime Kuma. Retourne (api, error_msg)."""
+    try:
+        from uptime_kuma_api import UptimeKumaApi
+        api = UptimeKumaApi(UPTIME_KUMA_URL)
+        api.login(UPTIME_KUMA_USER, UPTIME_KUMA_PASS)
+        return api, None
+    except Exception as exc:
+        return None, str(exc)
+
+
 # ─────────────────────────────────────────────
 # Decorateurs d'autorisation
 # ─────────────────────────────────────────────
@@ -150,6 +167,44 @@ def authorized_callback(func):
             return
         return await func(update, context)
     return wrapper
+
+
+# ─────────────────────────────────────────────
+# Menu principal
+# ─────────────────────────────────────────────
+
+MENU_KEYBOARD = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("\U0001f4ca Status", callback_data="menu_status"),
+        InlineKeyboardButton("\U0001f433 Services", callback_data="menu_services"),
+        InlineKeyboardButton("\U0001f4e6 Containers", callback_data="menu_containers"),
+    ],
+    [
+        InlineKeyboardButton("\U0001f4be Disk", callback_data="menu_disk"),
+        InlineKeyboardButton("\U0001f9e0 Memory", callback_data="menu_memory"),
+        InlineKeyboardButton("\U00002699\U0000fe0f CPU", callback_data="menu_cpu"),
+    ],
+    [
+        InlineKeyboardButton("\U0001f512 SSL", callback_data="menu_ssl"),
+        InlineKeyboardButton("\U0001f510 VPN", callback_data="menu_vpn"),
+        InlineKeyboardButton("\U0001f6e1 Security", callback_data="menu_security"),
+    ],
+    [
+        InlineKeyboardButton("\U0001f4e1 Monitors", callback_data="menu_monitors"),
+        InlineKeyboardButton("\U0001f507 Mute", callback_data="menu_mute"),
+        InlineKeyboardButton("\U00002753 Help", callback_data="menu_help"),
+    ],
+])
+
+
+@authorized
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menu principal avec grille de boutons inline."""
+    msg = html_header("Menu principal", "\U00002261")
+    msg += "<i>Cliquez sur une action :</i>"
+    await update.message.reply_text(
+        msg, parse_mode=ParseMode.HTML, reply_markup=MENU_KEYBOARD,
+    )
 
 
 # ─────────────────────────────────────────────
@@ -589,42 +644,257 @@ async def cmd_ack(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────
-# Navigation
+# Uptime Kuma
 # ─────────────────────────────────────────────
 
-@authorized
-async def cmd_quick(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Grille inline keyboard actions rapides."""
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("\U0001f4ca Status", callback_data="quick_status"),
-            InlineKeyboardButton("\U0001f433 Containers", callback_data="quick_containers"),
-        ],
-        [
-            InlineKeyboardButton("\U0001f4be Disk", callback_data="quick_disk"),
-            InlineKeyboardButton("\U0001f9e0 Memory", callback_data="quick_memory"),
-        ],
-        [
-            InlineKeyboardButton("\U0001f512 SSL", callback_data="quick_ssl"),
-            InlineKeyboardButton("\U0001f510 VPN", callback_data="quick_vpn"),
-        ],
-        [
-            InlineKeyboardButton("\U0001f6e1 Security", callback_data="quick_security"),
-            InlineKeyboardButton("\U0001f4e6 Updates", callback_data="quick_updates"),
-        ],
-    ])
-    msg = html_header("Actions rapides", "\U000026a1")
-    msg += "<i>Cliquez sur une action :</i>"
-    await update.message.reply_text(
-        msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
-    )
+def _build_monitors_msg(monitors):
+    """Construit le message et le clavier pour la liste des sondes."""
+    msg = html_header("Uptime Kuma Monitors", "\U0001f4e1")
+    buttons = []
+    for m in monitors:
+        mid = m.get("id", 0)
+        name = m.get("name", "?")
+        active = m.get("active", True)
+        m_type = m.get("type", "?")
+        interval = m.get("interval", 0)
+        if not active:
+            icon = "\U000023f8"
+            status_text = "PAUSED"
+            btn = InlineKeyboardButton(
+                f"\U000025b6 Resume {name}", callback_data=f"ukm_resume_{mid}",
+            )
+        else:
+            icon = "\U00002705"
+            status_text = "UP"
+            btn = InlineKeyboardButton(
+                f"\U000023f8 Pause {name}", callback_data=f"ukm_pause_{mid}",
+            )
+        msg += (
+            f"{icon} <b>{html_escape(str(name))}</b> [{status_text}]\n"
+            f"   Type: <code>{html_escape(str(m_type))}</code> "
+            f"| Interval: <code>{interval}s</code>\n\n"
+        )
+        buttons.append([btn])
+    buttons.append([InlineKeyboardButton(
+        "\U0001f519 Menu", callback_data="back_menu",
+    )])
+    return msg, InlineKeyboardMarkup(buttons)
 
+
+@authorized
+async def cmd_monitors(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Statut des sondes Uptime Kuma."""
+    api, err = get_uptime_kuma_api()
+    if not api:
+        msg = html_header("Uptime Kuma", "\U0001f4e1")
+        msg += f"\U0000274c Connexion impossible : <code>{html_escape(str(err))}</code>"
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return
+    try:
+        monitors = api.get_monitors()
+        msg, keyboard = _build_monitors_msg(monitors)
+        await update.message.reply_text(
+            truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+    finally:
+        api.disconnect()
+
+
+@authorized
+async def cmd_ukpause(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mettre en pause une sonde Uptime Kuma."""
+    api, err = get_uptime_kuma_api()
+    if not api:
+        msg = html_header("UK Pause", "\U000023f8")
+        msg += f"\U0000274c Connexion impossible : <code>{html_escape(str(err))}</code>"
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return
+    try:
+        monitors = api.get_monitors()
+        if context.args:
+            target = " ".join(context.args).lower()
+            found = None
+            for m in monitors:
+                if m.get("name", "").lower() == target:
+                    found = m
+                    break
+            if found:
+                api.pause_monitor(found["id"])
+                msg = html_header("UK Pause", "\U000023f8")
+                msg += f"\U000023f8 Sonde <b>{html_escape(found['name'])}</b> mise en pause."
+                await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            else:
+                msg = html_header("UK Pause", "\U000023f8")
+                msg += f"Sonde <code>{html_escape(target)}</code> introuvable."
+                await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            return
+        # Sans argument : afficher les sondes actives
+        active = [m for m in monitors if m.get("active", True)]
+        if not active:
+            msg = html_header("UK Pause", "\U000023f8")
+            msg += "<i>Aucune sonde active a mettre en pause.</i>"
+            await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            return
+        buttons = []
+        for m in active:
+            buttons.append([InlineKeyboardButton(
+                f"\U000023f8 {m['name']}", callback_data=f"ukpause_{m['id']}",
+            )])
+        msg = html_header("UK Pause", "\U000023f8")
+        msg += "<i>Quelle sonde mettre en pause ?</i>"
+        await update.message.reply_text(
+            msg, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+    finally:
+        api.disconnect()
+
+
+@authorized
+async def cmd_ukresume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reprendre une sonde Uptime Kuma en pause."""
+    api, err = get_uptime_kuma_api()
+    if not api:
+        msg = html_header("UK Resume", "\U000025b6")
+        msg += f"\U0000274c Connexion impossible : <code>{html_escape(str(err))}</code>"
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return
+    try:
+        monitors = api.get_monitors()
+        if context.args:
+            target = " ".join(context.args).lower()
+            found = None
+            for m in monitors:
+                if m.get("name", "").lower() == target:
+                    found = m
+                    break
+            if found:
+                api.resume_monitor(found["id"])
+                msg = html_header("UK Resume", "\U000025b6")
+                msg += f"\U000025b6 Sonde <b>{html_escape(found['name'])}</b> reprise."
+                await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            else:
+                msg = html_header("UK Resume", "\U000025b6")
+                msg += f"Sonde <code>{html_escape(target)}</code> introuvable."
+                await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            return
+        # Sans argument : afficher les sondes en pause
+        paused = [m for m in monitors if not m.get("active", True)]
+        if not paused:
+            msg = html_header("UK Resume", "\U000025b6")
+            msg += "<i>Aucune sonde en pause.</i>"
+            await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+            return
+        buttons = []
+        for m in paused:
+            buttons.append([InlineKeyboardButton(
+                f"\U000025b6 {m['name']}", callback_data=f"ukresume_{m['id']}",
+            )])
+        msg = html_header("UK Resume", "\U000025b6")
+        msg += "<i>Quelle sonde reprendre ?</i>"
+        await update.message.reply_text(
+            msg, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+    finally:
+        api.disconnect()
+
+
+@authorized
+async def cmd_maintenance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mode maintenance global Uptime Kuma."""
+    api, err = get_uptime_kuma_api()
+    if not api:
+        msg = html_header("Maintenance", "\U0001f527")
+        msg += f"\U0000274c Connexion impossible : <code>{html_escape(str(err))}</code>"
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return
+    try:
+        from uptime_kuma_api import MaintenanceStrategy
+        if context.args:
+            action = context.args[0].lower()
+            if action == "on":
+                monitors = api.get_monitors()
+                maint = api.add_maintenance(
+                    title=f"Maintenance {SERVER} (via Telegram)",
+                    strategy=MaintenanceStrategy.MANUAL,
+                    active=True,
+                    description="Activee via le bot Telegram",
+                )
+                maint_id = maint.get("id") or maint.get("maintenanceID")
+                if maint_id:
+                    for m in monitors:
+                        try:
+                            api.add_monitor_maintenance(maint_id, m["id"])
+                        except Exception:
+                            pass
+                msg = html_header("Maintenance", "\U0001f527")
+                msg += (
+                    "\U00002705 Mode maintenance <b>active</b> "
+                    f"sur {len(monitors)} sonde(s).\n"
+                    "Utilisez <code>/maintenance off</code> pour desactiver."
+                )
+                await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+                return
+            if action == "off":
+                maintenances = api.get_maintenances()
+                deleted = 0
+                for maint in maintenances:
+                    try:
+                        api.delete_maintenance(maint["id"])
+                        deleted += 1
+                    except Exception:
+                        pass
+                msg = html_header("Maintenance", "\U0001f527")
+                msg += f"\U00002705 {deleted} maintenance(s) supprimee(s)."
+                await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+                return
+        # Sans argument : afficher l'etat
+        maintenances = api.get_maintenances()
+        msg = html_header("Maintenance", "\U0001f527")
+        if not maintenances:
+            msg += "<i>Aucune maintenance active.</i>\n\n"
+        else:
+            for maint in maintenances:
+                title = maint.get("title", "?")
+                active = maint.get("active", False)
+                icon = "\U0001f7e0" if active else "\U000026aa"
+                msg += f"{icon} <b>{html_escape(str(title))}</b>\n"
+            msg += "\n"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "\U00002705 Activer", callback_data="maint_on",
+                ),
+                InlineKeyboardButton(
+                    "\U0000274c Desactiver", callback_data="maint_off",
+                ),
+            ]
+        ])
+        msg += "<i>Activer ou desactiver la maintenance ?</i>"
+        await update.message.reply_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+    except ImportError:
+        msg = html_header("Maintenance", "\U0001f527")
+        msg += "\U0000274c uptime-kuma-api non installe."
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    finally:
+        api.disconnect()
+
+
+# ─────────────────────────────────────────────
+# Navigation
+# ─────────────────────────────────────────────
 
 @authorized
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Aide complete."""
     msg = html_header("Commandes disponibles", "\U0001f916")
     msg += (
+        "<b>Navigation</b>\n"
+        "  /menu \u2014 Menu principal (grille)\n"
+        "  /help \u2014 Cette aide\n\n"
         "<b>Informationnelles</b>\n"
         "  /status \u2014 Resume Monit\n"
         "  /services \u2014 Liste services (interactif)\n"
@@ -643,13 +913,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /ssl \u2014 Certificats TLS (expiration)\n"
         "  /vpn \u2014 Peers VPN connectes\n"
         "  /security \u2014 Fail2Ban, SSH, UFW\n\n"
+        "<b>Uptime Kuma</b>\n"
+        "  /monitors \u2014 Statut des sondes\n"
+        "  /ukpause [sonde] \u2014 Mettre en pause\n"
+        "  /ukresume [sonde] \u2014 Reprendre\n"
+        "  /maintenance [on|off] \u2014 Mode maintenance\n\n"
         "<b>Notifications</b>\n"
         "  /mute [min] \u2014 Silencer les alertes\n"
         "  /unmute \u2014 Reactiver les alertes\n"
-        "  /ack &lt;monitor&gt; \u2014 Acquitter une alarme\n\n"
-        "<b>Navigation</b>\n"
-        "  /quick \u2014 Actions rapides (grille)\n"
-        "  /help \u2014 Cette aide\n"
+        "  /ack &lt;monitor&gt; \u2014 Acquitter une alarme\n"
     )
     await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
@@ -665,7 +937,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    # --- Quick actions ---
+    # --- Menu actions ---
+    if data.startswith("menu_"):
+        action = data.replace("menu_", "")
+        dispatch = {
+            "status": _cb_status,
+            "containers": _cb_containers,
+            "disk": _cb_disk,
+            "memory": _cb_memory,
+            "ssl": _cb_ssl,
+            "vpn": _cb_vpn,
+            "security": _cb_security,
+            "monitors": _cb_monitors,
+        }
+        handler = dispatch.get(action)
+        if handler:
+            await handler(query)
+        elif action == "services":
+            await _cb_services(query)
+        elif action == "cpu":
+            await _cb_cpu(query)
+        elif action == "mute":
+            await _cb_mute_menu(query)
+        elif action == "help":
+            await _cb_help(query)
+        return
+
+    # --- Quick actions (retrocompat) ---
     if data.startswith("quick_"):
         action = data.replace("quick_", "")
         dispatch = {
@@ -681,6 +979,126 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         handler = dispatch.get(action)
         if handler:
             await handler(query)
+        return
+
+    # --- Back to menu ---
+    if data == "back_menu":
+        msg = html_header("Menu principal", "\U00002261")
+        msg += "<i>Cliquez sur une action :</i>"
+        await query.edit_message_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=MENU_KEYBOARD,
+        )
+        return
+
+    # --- Uptime Kuma monitor pause/resume (from /monitors) ---
+    if data.startswith("ukm_pause_") or data.startswith("ukm_resume_"):
+        is_pause = data.startswith("ukm_pause_")
+        mid = int(data.replace("ukm_pause_" if is_pause else "ukm_resume_", ""))
+        api, err = get_uptime_kuma_api()
+        if not api:
+            msg = html_header("Uptime Kuma", "\U0001f4e1")
+            msg += f"\U0000274c {html_escape(str(err))}"
+            await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+            return
+        try:
+            if is_pause:
+                api.pause_monitor(mid)
+            else:
+                api.resume_monitor(mid)
+            monitors = api.get_monitors()
+            msg, keyboard = _build_monitors_msg(monitors)
+            action_text = "mise en pause" if is_pause else "reprise"
+            msg = f"\U00002705 Sonde {action_text}.\n\n" + msg
+            await query.edit_message_text(
+                truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+            )
+        finally:
+            api.disconnect()
+        return
+
+    # --- Uptime Kuma pause/resume from commands ---
+    if data.startswith("ukpause_"):
+        mid = int(data.replace("ukpause_", ""))
+        api, err = get_uptime_kuma_api()
+        if not api:
+            await query.edit_message_text(
+                f"\U0000274c Connexion impossible : {html_escape(str(err))}",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        try:
+            api.pause_monitor(mid)
+            msg = html_header("UK Pause", "\U000023f8")
+            msg += "\U000023f8 Sonde mise en pause."
+            await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        finally:
+            api.disconnect()
+        return
+
+    if data.startswith("ukresume_"):
+        mid = int(data.replace("ukresume_", ""))
+        api, err = get_uptime_kuma_api()
+        if not api:
+            await query.edit_message_text(
+                f"\U0000274c Connexion impossible : {html_escape(str(err))}",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        try:
+            api.resume_monitor(mid)
+            msg = html_header("UK Resume", "\U000025b6")
+            msg += "\U000025b6 Sonde reprise."
+            await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        finally:
+            api.disconnect()
+        return
+
+    # --- Maintenance toggle ---
+    if data in ("maint_on", "maint_off"):
+        api, err = get_uptime_kuma_api()
+        if not api:
+            await query.edit_message_text(
+                f"\U0000274c {html_escape(str(err))}", parse_mode=ParseMode.HTML,
+            )
+            return
+        try:
+            from uptime_kuma_api import MaintenanceStrategy
+            if data == "maint_on":
+                monitors = api.get_monitors()
+                maint = api.add_maintenance(
+                    title=f"Maintenance {SERVER} (via Telegram)",
+                    strategy=MaintenanceStrategy.MANUAL,
+                    active=True,
+                    description="Activee via le bot Telegram",
+                )
+                maint_id = maint.get("id") or maint.get("maintenanceID")
+                if maint_id:
+                    for m in monitors:
+                        try:
+                            api.add_monitor_maintenance(maint_id, m["id"])
+                        except Exception:
+                            pass
+                msg = html_header("Maintenance", "\U0001f527")
+                msg += f"\U00002705 Maintenance activee sur {len(monitors)} sonde(s)."
+            else:
+                maintenances = api.get_maintenances()
+                deleted = 0
+                for maint in maintenances:
+                    try:
+                        api.delete_maintenance(maint["id"])
+                        deleted += 1
+                    except Exception:
+                        pass
+                msg = html_header("Maintenance", "\U0001f527")
+                msg += f"\U00002705 {deleted} maintenance(s) supprimee(s)."
+            await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        except ImportError:
+            await query.edit_message_text(
+                "\U0000274c uptime-kuma-api non installe.",
+                parse_mode=ParseMode.HTML,
+            )
+        finally:
+            api.disconnect()
         return
 
     # --- Service details ---
@@ -770,7 +1188,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
         return
 
-    # --- Mute callback ---
+    # --- Mute callbacks ---
+    if data == "mute_unmute":
+        clear_mute()
+        msg = html_header("Unmute", "\U0001f50a")
+        msg += "\U00002705 Notifications reactives."
+        await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        return
+
     if data.startswith("mute_"):
         try:
             minutes = int(data.replace("mute_", ""))
@@ -784,11 +1209,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-# --- Quick callback helpers ---
+# --- Callback helpers ---
 
 
 async def _cb_status(query):
-    """Quick callback: Monit status."""
+    """Callback: Monit status."""
     raw = run_cmd("monit summary 2>/dev/null || echo 'Monit indisponible'")
     msg = html_header("Monit Status", "\U0001f4ca")
     for line in raw.split("\n"):
@@ -800,11 +1225,16 @@ async def _cb_status(query):
             msg += f"\U0000274c <code>{html_escape(line.strip())}</code>\n"
         else:
             msg += f"  <code>{html_escape(line.strip())}</code>\n"
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_containers(query):
-    """Quick callback: Docker containers."""
+    """Callback: Docker containers."""
     raw = run_cmd(
         'docker ps -a --format "'
         "{{ '{{' }}.Names{{ '}}' }}|"
@@ -821,11 +1251,16 @@ async def _cb_containers(query):
             f"{icon} <b>{html_escape(name.strip())}</b>: "
             f"<code>{html_escape(status.strip())}</code>\n"
         )
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_disk(query):
-    """Quick callback: Disk usage."""
+    """Callback: Disk usage."""
     raw = run_cmd("df -h --output=target,pcent -x tmpfs -x devtmpfs 2>/dev/null")
     msg = html_header("Disque", "\U0001f4be")
     for line in raw.split("\n")[1:]:
@@ -837,11 +1272,16 @@ async def _cb_disk(query):
         except ValueError:
             continue
         msg += f"<b>{html_escape(parts[0])}</b>  {progress_bar(pct)}\n"
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_memory(query):
-    """Quick callback: Memory usage."""
+    """Callback: Memory usage."""
     raw = run_cmd("free -m | grep Mem")
     msg = html_header("Memoire", "\U0001f9e0")
     parts = raw.split()
@@ -852,11 +1292,33 @@ async def _cb_memory(query):
             msg += f"RAM: {progress_bar(pct)}  <code>{used}/{total} Mo</code>\n"
         except (ValueError, IndexError):
             msg += f"<pre>{html_escape(raw)}</pre>"
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
+
+
+async def _cb_cpu(query):
+    """Callback: CPU info."""
+    loadavg = run_cmd("cat /proc/loadavg")
+    nproc = run_cmd("nproc")
+    msg = html_header("CPU", "\U00002699\U0000fe0f")
+    parts = loadavg.split()
+    if len(parts) >= 3:
+        msg += f"Load: <code>{parts[0]} {parts[1]} {parts[2]}</code>\n"
+        msg += f"Coeurs: <code>{html_escape(nproc.strip())}</code>\n"
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_ssl(query):
-    """Quick callback: SSL certificates."""
+    """Callback: SSL certificates."""
     msg = html_header("SSL", "\U0001f512")
     for name, domain in DOMAINS.items():
         if not domain:
@@ -881,11 +1343,16 @@ async def _cb_ssl(query):
                 msg += f"\U00002753 {html_escape(name)}\n"
         else:
             msg += f"\U0000274c {html_escape(name)}\n"
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_vpn(query):
-    """Quick callback: VPN peers."""
+    """Callback: VPN peers."""
     raw = run_cmd("docker exec headscale headscale nodes list -o json 2>/dev/null")
     msg = html_header("VPN", "\U0001f510")
     try:
@@ -897,11 +1364,16 @@ async def _cb_vpn(query):
             msg += f"{icon} <b>{html_escape(str(name))}</b>\n"
     except (json.JSONDecodeError, TypeError):
         msg += "<i>Erreur de lecture</i>"
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_security(query):
-    """Quick callback: Security overview."""
+    """Callback: Security overview."""
     f2b = run_cmd("fail2ban-client status sshd 2>/dev/null")
     msg = html_header("Securite", "\U0001f6e1")
     match = re.search(r"Currently banned:\s+(\d+)", f2b)
@@ -909,16 +1381,120 @@ async def _cb_security(query):
     msg += f"Fail2Ban: <code>{html_escape(str(banned))}</code> IP(s) bannies\n"
     ufw = run_cmd("ufw status 2>/dev/null | head -5")
     msg += f"\n<pre>{html_escape(ufw)}</pre>"
-    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 async def _cb_updates(query):
-    """Quick callback: Available updates."""
+    """Callback: Available updates."""
     raw = run_cmd("apt list --upgradable 2>/dev/null")
     lines = [ln for ln in raw.split("\n") if "/" in ln]
     msg = html_header("Updates", "\U0001f4e6")
     msg += f"<b>{len(lines)}</b> paquet(s) a mettre a jour"
-    await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(msg, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+
+
+async def _cb_monitors(query):
+    """Callback: Uptime Kuma monitors."""
+    api, err = get_uptime_kuma_api()
+    if not api:
+        msg = html_header("Uptime Kuma", "\U0001f4e1")
+        msg += f"\U0000274c {html_escape(str(err))}"
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+        ]])
+        await query.edit_message_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+        return
+    try:
+        monitors = api.get_monitors()
+        msg, keyboard = _build_monitors_msg(monitors)
+        await query.edit_message_text(
+            truncate(msg), parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+    finally:
+        api.disconnect()
+
+
+async def _cb_services(query):
+    """Callback: Services list."""
+    buttons = []
+    for svc in DOCKER_SERVICES:
+        buttons.append([InlineKeyboardButton(
+            f"\U0001f433 {svc}", callback_data=f"svc_docker_{svc}",
+        )])
+    for svc in SYSTEMD_SERVICES:
+        buttons.append([InlineKeyboardButton(
+            f"\U00002699\U0000fe0f {svc}", callback_data=f"svc_systemd_{svc}",
+        )])
+    buttons.append([InlineKeyboardButton(
+        "\U0001f519 Menu", callback_data="back_menu",
+    )])
+    msg = html_header("Services", "\U0001f5a5")
+    msg += "<i>Cliquez sur un service</i>"
+    await query.edit_message_text(
+        msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
+async def _cb_mute_menu(query):
+    """Callback: Mute menu."""
+    muted, mute_info = is_muted()
+    msg = html_header("Mute", "\U0001f507")
+    if muted:
+        msg += f"\U0001f507 Notifications silencees ({mute_info})\n\n"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("\U0001f50a Unmute", callback_data="mute_unmute")],
+            [InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu")],
+        ])
+    else:
+        msg += "\U0001f50a Notifications actives.\n\n"
+        msg += "<i>Silencer pendant :</i>"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("15 min", callback_data="mute_15"),
+                InlineKeyboardButton("30 min", callback_data="mute_30"),
+                InlineKeyboardButton("60 min", callback_data="mute_60"),
+                InlineKeyboardButton("120 min", callback_data="mute_120"),
+            ],
+            [InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu")],
+        ])
+    await query.edit_message_text(
+        msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
+
+
+async def _cb_help(query):
+    """Callback: Help text."""
+    msg = html_header("Commandes", "\U0001f916")
+    msg += (
+        "/menu \u2014 Menu principal\n"
+        "/monitors \u2014 Sondes Uptime Kuma\n"
+        "/status \u2014 Monit\n"
+        "/services \u2014 Services\n"
+        "/containers \u2014 Docker\n"
+        "/disk /memory /cpu \u2014 Ressources\n"
+        "/ssl /vpn /security \u2014 Securite\n"
+        "/logs /restart \u2014 Actions\n"
+        "/mute /unmute /ack \u2014 Alertes\n"
+        "/ukpause /ukresume \u2014 Sondes\n"
+        "/maintenance \u2014 Maintenance\n"
+        "/help \u2014 Aide complete\n"
+    )
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("\U0001f519 Menu", callback_data="back_menu"),
+    ]])
+    await query.edit_message_text(
+        msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 # ─────────────────────────────────────────────
@@ -935,6 +1511,11 @@ def main():
         return
 
     app = Application.builder().token(TOKEN).build()
+
+    # Menu & navigation
+    app.add_handler(CommandHandler("menu", cmd_menu))
+    app.add_handler(CommandHandler("start", cmd_menu))
+    app.add_handler(CommandHandler("quick", cmd_menu))
 
     # Commandes informationnelles
     app.add_handler(CommandHandler("status", cmd_status))
@@ -962,8 +1543,13 @@ def main():
     app.add_handler(CommandHandler("unmute", cmd_unmute))
     app.add_handler(CommandHandler("ack", cmd_ack))
 
+    # Uptime Kuma
+    app.add_handler(CommandHandler("monitors", cmd_monitors))
+    app.add_handler(CommandHandler("ukpause", cmd_ukpause))
+    app.add_handler(CommandHandler("ukresume", cmd_ukresume))
+    app.add_handler(CommandHandler("maintenance", cmd_maintenance))
+
     # Navigation
-    app.add_handler(CommandHandler("quick", cmd_quick))
     app.add_handler(CommandHandler("help", cmd_help))
 
     # Callback handler centralise

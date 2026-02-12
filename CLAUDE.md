@@ -309,6 +309,7 @@ Magic DNS interne : *.na.ewutelo.cloud (resolution VPN uniquement)
 | `vault_zerobyte_app_secret` | Exactement 64 chars hexadecimaux | Conteneur crash au demarrage |
 | `vault_headplane_cookie_secret` | Exactement 32 caracteres | Authentification echoue |
 | `vault_vaultwarden_admin_token` | Base64, 32 chars | UI admin inaccessible |
+| `uptime_kuma_admin_username` | **Sensible a la casse** (`admin` ≠ `Admin`) | Monitors non crees (skip silencieux) |
 
 ### Grafana Alloy
 

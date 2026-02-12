@@ -9,3 +9,4 @@ domain_portainer: "portainer.example.com"
 domain_zerobyte: "backup.example.com"
 domain_uptime_kuma: "status.example.com"
 ssh_custom_port: 22
+uptime_kuma_admin_username: "admin"

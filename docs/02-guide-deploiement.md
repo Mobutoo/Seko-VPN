@@ -88,7 +88,10 @@ Le wizard est un script interactif qui te pose 10 questions et génère automati
 | 12 | Port SSH custom | `2222` | `2222` |
 | 13 | Token bot Telegram | (secret) | (obligatoire) |
 | 14 | Chat ID Telegram | `123456789` | (obligatoire) |
-| 15 | Nom du serveur | `seko-vpn-01` | `seko-vpn-01` |
+| 15 | Username admin Uptime Kuma | `admin` | `admin` |
+| 16 | Nom du serveur | `seko-vpn-01` | `seko-vpn-01` |
+
+> **⚠️ Uptime Kuma — Casse du username :** Le nom d'utilisateur admin est **sensible à la casse** (`admin` ≠ `Admin`). Si le username dans le vault ne correspond pas exactement à celui de l'instance, le script de configuration des sondes sera ignoré silencieusement.
 
 ### Fichiers générés
 
