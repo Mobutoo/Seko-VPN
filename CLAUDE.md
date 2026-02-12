@@ -24,8 +24,9 @@ Le projet est concu comme un **template portable** : toutes les valeurs sont des
 2. `docs/02-guide-deploiement.md` — Guide de deploiement pas a pas
 3. `docs/03-gitops.md` — Workflow GitOps et CI/CD
 4. `docs/04-roles-reference.md` — Reference detaillee des 14 roles Ansible
-5. `docs/05-troubleshooting.md` — Depannage et pieges connus
+5. `docs/05-troubleshooting.md` — Depannage et pieges connus (Phases 1-5)
 6. `docs/06-v4-roadmap.md` — Feuille de route V4 (hors perimetre V3)
+7. `docs/07-rex-v3.1.md` — REX post-deploiement production (DERP, Headplane, CI/CD)
 
 ## Stack Technique
 
@@ -238,17 +239,24 @@ Les 14 roles s'executent dans un ordre precis (defini dans `playbooks/site.yml`)
 ```
 Client HTTPS --> Caddy :443 --> Conteneur backend (port interne)
                     |
-                    |-- hs.*.cloud       -> headscale:8080
+                    |-- singa.*.cloud    -> headscale:8080 (API + DERP embarque)
                     |-- seko.*.cloud     -> headplane:3000
                     |-- fongola.*.cloud  -> vaultwarden:80
                     |-- pao.*.cloud      -> portainer:9000
                     |-- buku.*.cloud     -> zerobyte:4096
                     +-- misu.*.cloud     -> uptime-kuma:3001
+
+STUN :3478/UDP -----> headscale (DERP embarque)
+WireGuard :41641/UDP -> headscale
+
+Magic DNS interne : *.na.ewutelo.cloud (resolution VPN uniquement)
 ```
 
 - Un seul reseau Docker bridge : `proxy-net`
-- Seul Caddy expose des ports (80/443)
+- Caddy expose les ports 80/443, Headscale expose 3478/UDP (STUN)
 - Monit est **headless** : pas de vhost, acces uniquement en SSH (`sudo monit status`)
+- **DERP embarque** : le serveur Headscale fait office de relais DERP, zero trafic via Tailscale Inc
+- **Deux domaines Headscale** : `domain_headscale` (API publique) ≠ `headscale_base_domain` (Magic DNS interne)
 
 ## Monitoring (4 couches)
 

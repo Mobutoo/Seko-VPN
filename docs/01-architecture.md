@@ -130,10 +130,33 @@ Client HTTPS ──► Caddy :443 ──► Conteneur backend (port interne)
 |------|----------|-------|
 | 22 (puis custom) | TCP | SSH |
 | 80 | TCP | HTTP (redirection vers HTTPS) |
-| 443 | TCP | HTTPS (Caddy) |
+| 443 | TCP | HTTPS (Caddy + DERP embarque) |
+| 3478 | UDP | STUN (DERP embarque Headscale) |
 | 41641 | UDP | WireGuard (Headscale) |
 
 Tous les autres ports sont bloqués par UFW. Fail2Ban surveille les tentatives SSH.
+
+### 3.4 DERP embarque (V3.1)
+
+Headscale inclut un serveur DERP integre pour relayer le trafic quand deux clients ne peuvent pas etablir une connexion directe (NAT). **Aucun trafic ne transite par les serveurs de Tailscale Inc.**
+
+Le DERP embarque reutilise la connexion HTTPS existante (port 443 via Caddy). Seul le STUN (3478/UDP) est un port supplementaire.
+
+```
+Client A ──WireGuard──► Headscale DERP (87.106.30.160) ──WireGuard──► Client B
+                            │
+                     STUN :3478/UDP (aide a la decouverte NAT)
+```
+
+### 3.5 Magic DNS
+
+Les machines connectees au VPN sont accessibles via un nom DNS automatique :
+
+```
+nomdupc.na.ewutelo.cloud  →  100.64.x.x (IP VPN interne)
+```
+
+Le `base_domain` (`na.ewutelo.cloud`) est purement interne au reseau VPN. Il n'a pas besoin d'enregistrement DNS chez le registrar.
 
 ---
 

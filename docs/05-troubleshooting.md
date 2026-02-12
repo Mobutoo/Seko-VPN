@@ -633,6 +633,26 @@ Monit: the monit daemon is not running
 
 ---
 
+## Phase 5 — Correctifs post-deploiement production (V3.1)
+
+> 11 problemes decouverts lors du premier deploiement en production (IONOS). Voir `docs/07-rex-v3.1.md` pour le detail complet organise par theme.
+
+| # | Composant | Piege | Severite |
+|---|-----------|-------|----------|
+| **5.1** | **Pipeline CI/CD** | **SSH key path incoherent (deploy_key vs seko-vpn-deploy)** | Bloquant |
+| **5.2** | **Pipeline CI/CD** | **vault.yml dans .gitignore → absent en CI** | Bloquant |
+| **5.3** | **Pipeline CI/CD** | **Vault password avec newline (echo vs printenv)** | Bloquant |
+| **5.4** | **Headplane** | **DNS page crash (champs config manquants)** | Bloquant |
+| **5.5** | **Headplane** | **Config read-only (volume :ro + config_strict)** | Majeur |
+| **5.6** | **Headscale** | **DERP map empty crash (urls: [])** | Bloquant |
+| **5.7** | **Headscale** | **server_url = base_domain conflit DERP** | Bloquant |
+| **5.8** | **Headscale** | **DERP private key path vide** | Bloquant |
+| **5.9** | **Molecule** | **server_ip undefined dans converge** | Bloquant |
+| **5.10** | **Headplane** | **Timeout 408 apres restart Headscale** | Majeur |
+| **5.11** | **Headscale CLI** | **--user attend un ID numerique (0.26.0)** | Mineur |
+
+---
+
 ## Dépannage rapide par outil
 
 ### Molecule
@@ -744,3 +764,9 @@ docker network inspect proxy-net
 | `Flag --datacenter is deprecated` | hcloud CLI v1.59+ | Remplacer `--datacenter` par `--location` |
 | `callback plugin has been removed` | `community.general` v12 | Utiliser `ansible.builtin.default` + `result_format: yaml` |
 | `service is activating (not active)` | Service pas encore démarré | Ajouter `retries` + `delay` dans le verify |
+| `initial DERPMap is empty` | DERP desactive + `urls: []` | Activer le DERP embarque (`derp.server.enabled: true`) |
+| `server_url cannot use same domain as base_domain` | Meme domaine pour API et Magic DNS | Variable `headscale_base_domain` separee de `domain_headscale` |
+| `failed to save private key to disk at path ""` | `derp.server.private_key_path` manquant | Ajouter le chemin dans la config DERP |
+| `Cannot convert undefined or null to object` (Headplane) | Champs DNS manquants dans config Headscale | Ajouter `split: {}`, `search_domains: []`, `extra_records: []` |
+| `Timed out waiting for Headscale API` (408) | Headplane demarre avant Headscale | `docker restart headplane` apres restart Headscale |
+| `invalid argument for --user flag` | Headscale 0.26.0 veut un ID numerique | `headscale users list` pour obtenir l'ID |
