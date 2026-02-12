@@ -14,6 +14,7 @@
     domain_uptime_kuma: "status.ci-test.local"
     server_ip: "127.0.0.1"
     ssh_custom_port: 804
+    uptime_kuma_admin_username: "admin"
     vault_uptime_kuma_admin_password: "ci-test-password-123"
     vault_telegram_bot_token: "123456:ABC-DEF-test-token"
     vault_telegram_chat_id: "123456789"

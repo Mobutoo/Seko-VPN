@@ -1,6 +1,7 @@
 ---
 uptime_kuma_version: "latest"
 uptime_kuma_data_path: "/opt/services/uptime-kuma"
+uptime_kuma_admin_username: "admin"
 domain_headscale: "hs.example.com"
 domain_headplane: "hp.example.com"
 domain_vaultwarden: "vault.example.com"

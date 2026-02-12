@@ -73,6 +73,11 @@ collect_info() {
     info "Créez un bot via @BotFather sur Telegram pour obtenir le token."
     TELEGRAM_TOKEN=$(ask "Token du bot Telegram"); TELEGRAM_CHAT_ID=$(ask "Chat ID Telegram")
 
+    header "Configuration Uptime Kuma"
+    UPTIME_KUMA_ADMIN_USER=$(ask "Nom d'utilisateur admin Uptime Kuma" "admin")
+    SECRET_UPTIME_KUMA_PASSWORD=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    success "Mot de passe admin Uptime Kuma généré"
+
     header "Identification serveur"
     SERVER_NAME=$(ask "Nom du serveur (pour le bot Telegram)" "seko-vpn-01")
 }
@@ -147,6 +152,8 @@ vault_zerobyte_app_secret: "${SECRET_ZB_APP_SECRET}"
 vault_monit_password: "${SECRET_MONIT_PASSWORD}"
 vault_telegram_bot_token: "${TELEGRAM_TOKEN}"
 vault_telegram_chat_id: "${TELEGRAM_CHAT_ID}"
+vault_uptime_kuma_admin_password: "${SECRET_UPTIME_KUMA_PASSWORD}"
+uptime_kuma_admin_username: "${UPTIME_KUMA_ADMIN_USER}"
 EOF
     success "vault.yml généré (non chiffré)"
 }

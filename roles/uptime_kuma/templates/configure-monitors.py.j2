@@ -11,7 +11,7 @@ import time
 from uptime_kuma_api import UptimeKumaApi, MonitorType
 
 API_URL = "http://127.0.0.1:3001"
-USERNAME = "admin"
+USERNAME = "{{ uptime_kuma_admin_username }}"
 PASSWORD = "{{ vault_uptime_kuma_admin_password }}"
 
 # --- Monitors a creer ---
@@ -115,11 +115,12 @@ def main():
             logged_in = True
         except Exception as setup_exc:
             if "initialized" in str(setup_exc).lower():
-                print("WARNING: Uptime Kuma already initialized with a "
-                      "different password. Skipping monitor configuration.")
-                print("ACTION: Update vault_uptime_kuma_admin_password to "
-                      "match the existing Uptime Kuma admin password, or "
-                      "reset via the Uptime Kuma UI.")
+                print("WARNING: Uptime Kuma already initialized with "
+                      "different credentials. Skipping monitor configuration.")
+                print("ACTION: Update uptime_kuma_admin_username and/or "
+                      "vault_uptime_kuma_admin_password to match the "
+                      "existing Uptime Kuma admin account, or reset "
+                      "via the Uptime Kuma UI.")
                 print("\nSummary: 0 created, 0 already existed (skipped)")
                 api.disconnect()
                 return

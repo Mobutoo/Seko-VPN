@@ -238,6 +238,7 @@ jobs:
           vault_telegram_chat_id: "000000000"
           vault_monit_password: "$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 16)"
           vault_uptime_kuma_admin_password: "$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+          uptime_kuma_admin_username: "ci-admin"
           EOF
 
       - name: Run full site.yml in CI mode
