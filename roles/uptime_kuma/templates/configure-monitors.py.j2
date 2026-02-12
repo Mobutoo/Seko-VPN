@@ -98,17 +98,38 @@ def main():
     api = UptimeKumaApi(API_URL)
 
     # --- Login ou premier setup ---
+    # Cas 1 : login avec le mot de passe vault (instance existante)
+    # Cas 2 : premier deploiement → setup puis login
+    # Cas 3 : instance existante mais mot de passe different → skip (pas de crash)
+    logged_in = False
     try:
         api.login(USERNAME, PASSWORD)
         print(f"INFO: Logged in as {USERNAME}")
-    except Exception:
+        logged_in = True
+    except Exception as login_exc:
+        print(f"INFO: Login failed ({login_exc}), trying setup...")
         try:
             api.setup(USERNAME, PASSWORD)
             print(f"INFO: First-time setup done for {USERNAME}")
             api.login(USERNAME, PASSWORD)
-        except Exception as exc:
-            print(f"ERROR: Cannot login or setup: {exc}", file=sys.stderr)
+            logged_in = True
+        except Exception as setup_exc:
+            if "initialized" in str(setup_exc).lower():
+                print("WARNING: Uptime Kuma already initialized with a "
+                      "different password. Skipping monitor configuration.")
+                print("ACTION: Update vault_uptime_kuma_admin_password to "
+                      "match the existing Uptime Kuma admin password, or "
+                      "reset via the Uptime Kuma UI.")
+                print("\nSummary: 0 created, 0 already existed (skipped)")
+                api.disconnect()
+                return
+            print(f"ERROR: Cannot login or setup: {setup_exc}",
+                  file=sys.stderr)
             sys.exit(1)
+
+    if not logged_in:
+        print("ERROR: Not authenticated", file=sys.stderr)
+        sys.exit(1)
 
     # --- Notification Telegram ---
     existing_notifs = api.get_notifications()
