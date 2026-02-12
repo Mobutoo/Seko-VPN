@@ -5,5 +5,17 @@
   vars:
     uptime_kuma_version: "latest"
     uptime_kuma_data_path: "/opt/services/uptime-kuma"
+    ci_mode: true
+    domain_headscale: "hs.ci-test.local"
+    domain_headplane: "hp.ci-test.local"
+    domain_vaultwarden: "vault.ci-test.local"
+    domain_portainer: "portainer.ci-test.local"
+    domain_zerobyte: "backup.ci-test.local"
+    domain_uptime_kuma: "status.ci-test.local"
+    server_ip: "127.0.0.1"
+    ssh_custom_port: 804
+    vault_uptime_kuma_admin_password: "ci-test-password-123"
+    vault_telegram_bot_token: "123456:ABC-DEF-test-token"
+    vault_telegram_chat_id: "123456789"
   roles:
     - role: uptime_kuma

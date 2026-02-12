@@ -1,3 +1,11 @@
 ---
 uptime_kuma_version: "latest"
 uptime_kuma_data_path: "/opt/services/uptime-kuma"
+domain_headscale: "hs.example.com"
+domain_headplane: "hp.example.com"
+domain_vaultwarden: "vault.example.com"
+domain_portainer: "portainer.example.com"
+domain_zerobyte: "backup.example.com"
+domain_uptime_kuma: "status.example.com"
+server_ip: "127.0.0.1"
+ssh_custom_port: 22

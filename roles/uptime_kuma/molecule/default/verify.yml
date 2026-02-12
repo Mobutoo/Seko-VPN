@@ -13,3 +13,24 @@
       ansible.builtin.assert:
         that:
           - "'true' in uptime_kuma_check.stdout"
+
+    - name: Vérifier le script de configuration
+      ansible.builtin.stat:
+        path: /opt/services/uptime-kuma/setup/configure-monitors.py
+      register: uptime_kuma_script_check
+
+    - name: Valider le script de configuration
+      ansible.builtin.assert:
+        that:
+          - uptime_kuma_script_check.stat.exists
+          - uptime_kuma_script_check.stat.mode == '0700'
+
+    - name: Vérifier le fichier requirements
+      ansible.builtin.stat:
+        path: /opt/services/uptime-kuma/setup/requirements-setup.txt
+      register: uptime_kuma_requirements_check
+
+    - name: Valider le fichier requirements
+      ansible.builtin.assert:
+        that:
+          - uptime_kuma_requirements_check.stat.exists

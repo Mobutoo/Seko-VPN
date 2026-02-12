@@ -332,6 +332,7 @@ Les priorites pour la V4 (hors perimetre V3) :
 1. **SSO/OIDC centralise** (Authelia) — Haute priorite
 2. **Backup chiffre vers S3** (Backblaze B2 / Wasabi) — Haute priorite
 3. **Multi-serveur Telegram Bot** (architecture agent/central via Headscale VPN) — Haute priorite
+3b. **Security Hardening V3.2** (9 axes : cap_drop, Fail2Ban HTTP, ACL, segmentation reseau, SSH VPN-only) — Haute priorite
 4. Scanning de vulnerabilites (Trivy dans CI) — Moyenne priorite
 5. Support multi-OS (Ubuntu, Rocky Linux) — Moyenne priorite
 6. Stack observabilite complete (Loki + Prometheus + Grafana) — Moyenne priorite

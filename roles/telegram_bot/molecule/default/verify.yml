@@ -43,3 +43,19 @@
         that:
           - telegram_bot_env_check.stat.exists
           - telegram_bot_env_check.stat.mode == '0600'
+
+    - name: Vérifier la syntaxe Python du bot
+      ansible.builtin.command:
+        cmd: /opt/services/telegram-bot/venv/bin/python -m py_compile /opt/services/telegram-bot/bot.py
+      changed_when: false
+
+    - name: Vérifier les variables de domaine dans .env
+      ansible.builtin.command:
+        cmd: grep -c "DOMAIN_" /opt/services/telegram-bot/.env
+      register: telegram_bot_domain_count
+      changed_when: false
+
+    - name: Valider les 6 domaines dans .env
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_domain_count.stdout | int >= 6

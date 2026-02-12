@@ -2,3 +2,10 @@
 telegram_bot_server_name: "seko-vpn-01"
 base_deploy_path: "/opt/services"
 telegram_bot_path: "/opt/services/telegram-bot"
+domain_headscale: "hs.example.com"
+domain_headplane: "hp.example.com"
+domain_vaultwarden: "vault.example.com"
+domain_portainer: "portainer.example.com"
+domain_zerobyte: "backup.example.com"
+domain_uptime_kuma: "status.example.com"
+ssh_custom_port: 22

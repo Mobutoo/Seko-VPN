@@ -15,3 +15,55 @@
   community.docker.docker_compose_v2:
     project_src: "{{ uptime_kuma_data_path }}"
     state: present
+
+# --- Post-deploiement : configuration automatique des monitors ---
+
+- name: Créer le répertoire de setup Uptime Kuma
+  ansible.builtin.file:
+    path: "{{ uptime_kuma_data_path }}/setup"
+    state: directory
+    mode: "0755"
+
+- name: Déployer le script de configuration des monitors
+  ansible.builtin.template:
+    src: configure-monitors.py.j2
+    dest: "{{ uptime_kuma_data_path }}/setup/configure-monitors.py"
+    mode: "0700"
+
+- name: Déployer les requirements du script de setup
+  ansible.builtin.template:
+    src: requirements-setup.txt.j2
+    dest: "{{ uptime_kuma_data_path }}/setup/requirements-setup.txt"
+    mode: "0644"
+
+- name: Créer le virtualenv pour le script de setup
+  ansible.builtin.command:
+    cmd: python3 -m venv "{{ uptime_kuma_data_path }}/setup/venv"
+    creates: "{{ uptime_kuma_data_path }}/setup/venv/bin/python"
+  when: not (ci_mode | default(false))
+
+- name: Installer les dépendances du script de setup
+  ansible.builtin.command:
+    cmd: >-
+      {{ uptime_kuma_data_path }}/setup/venv/bin/pip install
+      -r {{ uptime_kuma_data_path }}/setup/requirements-setup.txt
+  register: uptime_kuma_pip_install
+  changed_when: "'Successfully installed' in uptime_kuma_pip_install.stdout"
+  when: not (ci_mode | default(false))
+
+- name: Attendre qu'Uptime Kuma soit accessible
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:3001"
+    status_code: [200, 401]
+  register: uptime_kuma_health
+  until: uptime_kuma_health.status in [200, 401]
+  retries: 30
+  delay: 5
+  when: not (ci_mode | default(false))
+
+- name: Configurer les monitors et notifications Uptime Kuma
+  ansible.builtin.command:
+    cmd: "{{ uptime_kuma_data_path }}/setup/venv/bin/python {{ uptime_kuma_data_path }}/setup/configure-monitors.py"
+  register: uptime_kuma_configure
+  changed_when: "'0 created' not in uptime_kuma_configure.stdout"
+  when: not (ci_mode | default(false))

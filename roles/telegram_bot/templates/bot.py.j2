@@ -1,19 +1,52 @@
 #!/usr/bin/env python3
 """
-Bot Telegram interactif — Seko-VPN
-Commandes : /status /containers /disk /logs /restart /uptime /help
+Bot Telegram interactif — Seko-VPN V3.2
+20 commandes : status, services, containers, disk, memory, cpu, network,
+logs, restart, uptime, updates, backup, ssl, vpn, security, mute, unmute, ack, quick, help
 """
-import asyncio
+import json
 import logging
 import os
+import re
 import subprocess
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+import time
+from datetime import datetime, timezone
+from html import escape as html_escape
+from pathlib import Path
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+)
 
 # --- Configuration ---
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-ALLOWED_IDS = [int(x.strip()) for x in os.environ.get("ALLOWED_CHAT_IDS", "").split(",") if x.strip()]
+ALLOWED_IDS = [
+    int(x.strip())
+    for x in os.environ.get("ALLOWED_CHAT_IDS", "").split(",")
+    if x.strip()
+]
 SERVER = os.environ.get("SERVER_NAME", "seko-vpn")
+DOMAINS = {
+    "headscale": os.environ.get("DOMAIN_HEADSCALE", ""),
+    "headplane": os.environ.get("DOMAIN_HEADPLANE", ""),
+    "vaultwarden": os.environ.get("DOMAIN_VAULTWARDEN", ""),
+    "portainer": os.environ.get("DOMAIN_PORTAINER", ""),
+    "zerobyte": os.environ.get("DOMAIN_ZEROBYTE", ""),
+    "uptime-kuma": os.environ.get("DOMAIN_UPTIME_KUMA", ""),
+}
+SSH_PORT = os.environ.get("SSH_PORT", "22")
+
+MUTE_FILE = Path("/tmp/seko-mute.json")
+DOCKER_SERVICES = [
+    "headscale", "headplane", "vaultwarden", "portainer",
+    "zerobyte", "caddy", "uptime-kuma",
+]
+SYSTEMD_SERVICES = ["monit", "telegram-bot", "docker", "grafana-alloy"]
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -21,150 +54,922 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Stockage des confirmations de restart en attente
-pending_restarts = {}
 
+# ─────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────
+
+def now_str():
+    """Timestamp lisible."""
+    return datetime.now(tz=timezone.utc).strftime("%H:%M:%S UTC")
+
+
+def html_header(title, emoji=""):
+    """En-tete HTML avec serveur et timestamp."""
+    return (
+        f"{emoji} <b>[{html_escape(SERVER)}] {html_escape(title)}</b>\n"
+        f"<i>{now_str()}</i>\n{'─' * 28}\n"
+    )
+
+
+def progress_bar(percent, length=10):
+    """Barre de progression visuelle."""
+    percent = max(0, min(100, percent))
+    filled = round(length * percent / 100)
+    bar = "▓" * filled + "░" * (length - filled)
+    return f"{bar} {percent:.0f}%"
+
+
+def truncate(text, limit=3800):
+    """Tronque un message pour Telegram (4096 max)."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n\n<i>... (tronque)</i>"
+
+
+def run_cmd(cmd, timeout=30):
+    """Execute une commande shell et retourne la sortie."""
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout,
+        )
+        return result.stdout.strip() or result.stderr.strip() or "(pas de sortie)"
+    except subprocess.TimeoutExpired:
+        return "Timeout"
+    except Exception as exc:
+        return f"Erreur: {exc}"
+
+
+def is_muted():
+    """Verifie si les notifications sont silencees."""
+    if not MUTE_FILE.exists():
+        return False, ""
+    try:
+        data = json.loads(MUTE_FILE.read_text())
+        until = data.get("until", 0)
+        if time.time() < until:
+            remaining = int((until - time.time()) / 60)
+            return True, f"{remaining} min restantes"
+        MUTE_FILE.unlink(missing_ok=True)
+    except (json.JSONDecodeError, OSError):
+        MUTE_FILE.unlink(missing_ok=True)
+    return False, ""
+
+
+def set_mute(minutes):
+    """Active le mode silencieux."""
+    data = {"until": time.time() + minutes * 60, "since": now_str()}
+    MUTE_FILE.write_text(json.dumps(data))
+
+
+def clear_mute():
+    """Desactive le mode silencieux."""
+    MUTE_FILE.unlink(missing_ok=True)
+
+
+# ─────────────────────────────────────────────
+# Decorateurs d'autorisation
+# ─────────────────────────────────────────────
 
 def authorized(func):
-    """Décorateur pour vérifier les chat IDs autorisés."""
+    """Decorateur : verifie les chat IDs autorises (commandes)."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_chat.id not in ALLOWED_IDS:
-            await update.message.reply_text("⛔ Non autorisé.")
+            await update.message.reply_text("Non autorise.")
             return
         return await func(update, context)
     return wrapper
 
 
-def run_cmd(cmd: str, timeout: int = 30) -> str:
-    """Exécute une commande et retourne la sortie."""
-    try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=timeout
-        )
-        return result.stdout.strip() or result.stderr.strip() or "(pas de sortie)"
-    except subprocess.TimeoutExpired:
-        return "⏰ Timeout"
-    except Exception as e:
-        return f"❌ Erreur: {e}"
+def authorized_callback(func):
+    """Decorateur : verifie les chat IDs autorises (callbacks)."""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        if query.message.chat.id not in ALLOWED_IDS:
+            await query.answer("Non autorise.")
+            return
+        return await func(update, context)
+    return wrapper
 
+
+# ─────────────────────────────────────────────
+# Commandes informationnelles
+# ─────────────────────────────────────────────
 
 @authorized
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Affiche le résumé Monit."""
-    output = run_cmd("monit summary 2>/dev/null || echo 'Monit indisponible'")
-    await update.message.reply_text(f"[{SERVER}] 📊 Monit Summary\n{'─' * 25}\n{output}")
+    """Resume Monit avec formatage HTML."""
+    raw = run_cmd("monit summary 2>/dev/null || echo 'Monit indisponible'")
+    lines = raw.split("\n")
+    msg = html_header("Monit Status", "\U0001f4ca")
+    for line in lines:
+        if not line.strip():
+            continue
+        if "OK" in line or "Running" in line or "Accessible" in line:
+            msg += f"\U00002705 <code>{html_escape(line.strip())}</code>\n"
+        elif "FAILED" in line or "Does not exist" in line:
+            msg += f"\U0000274c <code>{html_escape(line.strip())}</code>\n"
+        elif "Initializing" in line or "Not monitored" in line:
+            msg += f"\U000023f3 <code>{html_escape(line.strip())}</code>\n"
+        else:
+            msg += f"  <code>{html_escape(line.strip())}</code>\n"
+    muted, mute_info = is_muted()
+    if muted:
+        msg += f"\n\U0001f507 <b>Notifications silencees</b> ({mute_info})"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
 
 
 @authorized
-async def cmd_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Liste les conteneurs Docker."""
-    output = run_cmd('docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}\t{{ '{{' }}.Ports{{ '}}' }}"')
-    await update.message.reply_text(f"[{SERVER}] 🐳 Conteneurs\n{'─' * 25}\n{output}")
-
-
-@authorized
-async def cmd_disk(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Affiche l'utilisation disque."""
-    output = run_cmd("df -h --output=target,pcent,size,avail | head -10")
-    await update.message.reply_text(f"[{SERVER}] 💾 Disque\n{'─' * 25}\n{output}")
-
-
-@authorized
-async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Affiche les 20 dernières lignes de logs d'un service."""
-    if not context.args:
-        await update.message.reply_text(f"[{SERVER}] Usage: /logs <service>\nExemple: /logs headscale")
-        return
-    service = context.args[0]
-    # Essayer Docker d'abord, puis journalctl
-    output = run_cmd(f"docker logs --tail 20 {service} 2>/dev/null")
-    if "No such container" in output or "Error" in output:
-        output = run_cmd(f"journalctl -u {service} -n 20 --no-pager 2>/dev/null")
-    # Tronquer si trop long
-    if len(output) > 3500:
-        output = output[:3500] + "\n... (tronqué)"
-    await update.message.reply_text(f"[{SERVER}] 📋 Logs {service}\n{'─' * 25}\n{output}")
-
-
-@authorized
-async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Demande confirmation avant de redémarrer un service."""
-    if not context.args:
-        await update.message.reply_text(f"[{SERVER}] Usage: /restart <service>")
-        return
-    service = context.args[0]
-    chat_id = update.effective_chat.id
-    pending_restarts[chat_id] = service
+async def cmd_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Liste services avec inline keyboard drill-down."""
+    buttons = []
+    for svc in DOCKER_SERVICES:
+        buttons.append([InlineKeyboardButton(
+            f"\U0001f433 {svc}", callback_data=f"svc_docker_{svc}",
+        )])
+    for svc in SYSTEMD_SERVICES:
+        buttons.append([InlineKeyboardButton(
+            f"\U00002699\U0000fe0f {svc}", callback_data=f"svc_systemd_{svc}",
+        )])
+    msg = html_header("Services", "\U0001f5a5")
+    msg += "<i>Cliquez sur un service pour voir les details</i>"
     await update.message.reply_text(
-        f"[{SERVER}] ⚠️ Confirmer le redémarrage de '{service}' ?\n"
-        f"Envoyez /restart_confirm {service} pour confirmer."
+        msg, parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 
 @authorized
-async def cmd_restart_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Confirme et exécute le redémarrage."""
-    chat_id = update.effective_chat.id
-    if not context.args:
-        await update.message.reply_text(f"[{SERVER}] Usage: /restart_confirm <service>")
-        return
-    service = context.args[0]
-    if chat_id not in pending_restarts or pending_restarts[chat_id] != service:
-        await update.message.reply_text(f"[{SERVER}] ❌ Pas de redémarrage en attente pour '{service}'.")
-        return
-    del pending_restarts[chat_id]
-    await update.message.reply_text(f"[{SERVER}] 🔄 Redémarrage de '{service}'...")
-    # Essayer Docker d'abord, puis systemctl
-    output = run_cmd(f"docker restart {service} 2>/dev/null")
-    if "No such container" in output or "Error" in output:
-        output = run_cmd(f"systemctl restart {service} 2>/dev/null && echo 'OK' || echo 'ERREUR'")
-    await update.message.reply_text(f"[{SERVER}] ✅ Résultat: {output}")
+async def cmd_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Liste les conteneurs Docker formates."""
+    raw = run_cmd(
+        'docker ps -a --format "'
+        "{{ '{{' }}.Names{{ '}}' }}|"
+        "{{ '{{' }}.Status{{ '}}' }}|"
+        "{{ '{{' }}.Image{{ '}}' }}"
+        '"'
+    )
+    msg = html_header("Conteneurs Docker", "\U0001f433")
+    for line in raw.split("\n"):
+        if not line.strip() or "|" not in line:
+            continue
+        parts = line.split("|", 2)
+        if len(parts) < 3:
+            continue
+        name, status, image = parts[0].strip(), parts[1].strip(), parts[2].strip()
+        icon = "\U00002705" if "Up" in status else "\U0000274c"
+        msg += f"{icon} <b>{html_escape(name)}</b>\n"
+        msg += f"   Status: <code>{html_escape(status)}</code>\n"
+        msg += f"   Image: <code>{html_escape(image)}</code>\n\n"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_disk(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Usage disque avec barres de progression."""
+    raw = run_cmd("df -h --output=target,pcent,size,avail -x tmpfs -x devtmpfs 2>/dev/null")
+    msg = html_header("Disque", "\U0001f4be")
+    for line in raw.split("\n")[1:]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        mount, pct_str, size, avail = parts[0], parts[1], parts[2], parts[3]
+        try:
+            pct = int(pct_str.replace("%", ""))
+        except ValueError:
+            continue
+        warn = " \U000026a0" if pct > 80 else ""
+        msg += (
+            f"<b>{html_escape(mount)}</b>{warn}\n"
+            f"  {progress_bar(pct)} ({html_escape(size)} total, "
+            f"{html_escape(avail)} libre)\n\n"
+        )
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """RAM usage avec barre de progression."""
+    raw = run_cmd("free -m | grep Mem")
+    msg = html_header("Memoire", "\U0001f9e0")
+    parts = raw.split()
+    if len(parts) >= 3:
+        try:
+            total = int(parts[1])
+            used = int(parts[2])
+            pct = (used / total * 100) if total > 0 else 0
+            free_mb = total - used
+            msg += "<b>RAM</b>\n"
+            msg += f"  {progress_bar(pct)}\n"
+            msg += f"  <code>{used} Mo / {total} Mo</code> ({free_mb} Mo libre)\n\n"
+        except (ValueError, IndexError):
+            msg += f"<pre>{html_escape(raw)}</pre>\n"
+    swap_raw = run_cmd("free -m | grep Swap")
+    swap_parts = swap_raw.split()
+    if len(swap_parts) >= 3:
+        try:
+            s_total = int(swap_parts[1])
+            s_used = int(swap_parts[2])
+            if s_total > 0:
+                s_pct = s_used / s_total * 100
+                msg += "<b>Swap</b>\n"
+                msg += f"  {progress_bar(s_pct)}\n"
+                msg += f"  <code>{s_used} Mo / {s_total} Mo</code>\n"
+        except (ValueError, IndexError):
+            pass
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_cpu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Load average + top 5 processus."""
+    loadavg = run_cmd("cat /proc/loadavg")
+    nproc = run_cmd("nproc")
+    top5 = run_cmd("ps aux --sort=-%cpu --no-headers | head -5")
+    msg = html_header("CPU", "\U00002699\U0000fe0f")
+    parts = loadavg.split()
+    if len(parts) >= 3:
+        msg += f"<b>Load Average</b>: <code>{parts[0]} {parts[1]} {parts[2]}</code>\n"
+        msg += f"<b>Coeurs</b>: <code>{html_escape(nproc.strip())}</code>\n\n"
+    msg += "<b>Top 5 processus (CPU)</b>\n<pre>"
+    for line in top5.split("\n")[:5]:
+        cols = line.split(None, 10)
+        if len(cols) >= 11:
+            msg += f"{cols[2]:>5}%  {html_escape(cols[10][:40])}\n"
+    msg += "</pre>"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Connexions actives et ports en ecoute."""
+    listen = run_cmd("ss -tlnp 2>/dev/null | head -20")
+    conns = run_cmd("ss -s 2>/dev/null")
+    msg = html_header("Reseau", "\U0001f310")
+    msg += "<b>Ports en ecoute</b>\n<pre>"
+    msg += html_escape(listen) + "</pre>\n\n"
+    msg += "<b>Resume connexions</b>\n<pre>"
+    msg += html_escape(conns) + "</pre>"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
 
 
 @authorized
 async def cmd_uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Affiche l'uptime du serveur."""
-    output = run_cmd("uptime -p")
+    """Uptime, load, kernel."""
+    up = run_cmd("uptime -p")
+    since = run_cmd("uptime -s")
+    kernel = run_cmd("uname -r")
     load = run_cmd("cat /proc/loadavg")
-    await update.message.reply_text(f"[{SERVER}] ⏱ Uptime\n{'─' * 25}\n{output}\nLoad: {load}")
+    msg = html_header("Uptime", "\U000023f1")
+    msg += f"<b>Uptime</b>: <code>{html_escape(up)}</code>\n"
+    msg += f"<b>Depuis</b>: <code>{html_escape(since)}</code>\n"
+    msg += f"<b>Kernel</b>: <code>{html_escape(kernel)}</code>\n"
+    msg += f"<b>Load</b>: <code>{html_escape(load)}</code>\n"
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
+# ─────────────────────────────────────────────
+# Commandes actions
+# ─────────────────────────────────────────────
+
+@authorized
+async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """20 dernieres lignes de logs d'un service."""
+    if not context.args:
+        buttons = []
+        for svc in DOCKER_SERVICES:
+            buttons.append([InlineKeyboardButton(
+                f"\U0001f433 {svc}", callback_data=f"logs_{svc}",
+            )])
+        msg = html_header("Logs", "\U0001f4cb")
+        msg += "<i>Choisissez un service :</i>"
+        await update.message.reply_text(
+            msg, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+        return
+    service = context.args[0]
+    output = _get_logs(service)
+    msg = html_header(f"Logs {service}", "\U0001f4cb")
+    msg += f"<pre>{html_escape(output)}</pre>"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+def _get_logs(service, lines=20):
+    """Recupere les logs (Docker puis journalctl fallback)."""
+    output = run_cmd(f"docker logs --tail {lines} {service} 2>&1")
+    if "No such container" in output or "Error" in output:
+        output = run_cmd(f"journalctl -u {service} -n {lines} --no-pager 2>/dev/null")
+    return output
+
+
+@authorized
+async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inline keyboard pour redemarrer un service."""
+    if context.args:
+        service = context.args[0]
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "\U00002705 Confirmer", callback_data=f"restart_yes_{service}",
+                ),
+                InlineKeyboardButton(
+                    "\U0000274c Annuler", callback_data="restart_no",
+                ),
+            ]
+        ])
+        msg = html_header(f"Restart {service}", "\U000026a0")
+        msg += f"Confirmer le redemarrage de <b>{html_escape(service)}</b> ?"
+        await update.message.reply_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+        return
+    buttons = []
+    row = []
+    all_svcs = DOCKER_SERVICES + SYSTEMD_SERVICES
+    for i, svc in enumerate(all_svcs):
+        row.append(InlineKeyboardButton(svc, callback_data=f"restart_ask_{svc}"))
+        if len(row) == 2 or i == len(all_svcs) - 1:
+            buttons.append(row)
+            row = []
+    msg = html_header("Restart", "\U0001f504")
+    msg += "<i>Quel service redemarrer ?</i>"
+    await update.message.reply_text(
+        msg, parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
+# ─────────────────────────────────────────────
+# Commandes monitoring
+# ─────────────────────────────────────────────
+
+@authorized
+async def cmd_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Nombre de paquets apt a mettre a jour."""
+    run_cmd("apt update -qq 2>/dev/null", timeout=60)
+    raw = run_cmd("apt list --upgradable 2>/dev/null")
+    lines = [ln for ln in raw.split("\n") if "/" in ln]
+    msg = html_header("Mises a jour", "\U0001f4e6")
+    if lines:
+        msg += f"<b>{len(lines)}</b> paquet(s) a mettre a jour :\n\n<pre>"
+        for line in lines[:15]:
+            name = line.split("/")[0]
+            msg += f"  {html_escape(name)}\n"
+        if len(lines) > 15:
+            msg += f"  ... et {len(lines) - 15} autres\n"
+        msg += "</pre>"
+    else:
+        msg += "\U00002705 Systeme a jour !"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Statut Zerobyte (logs conteneur)."""
+    raw = run_cmd("docker logs --tail 30 zerobyte 2>&1")
+    msg = html_header("Backup (Zerobyte)", "\U0001f4be")
+    msg += f"<pre>{html_escape(raw)}</pre>"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_ssl(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Expiration certificats TLS pour les 6 domaines."""
+    msg = html_header("Certificats SSL", "\U0001f512")
+    for name, domain in DOMAINS.items():
+        if not domain:
+            continue
+        raw = run_cmd(
+            f"echo | openssl s_client -servername {domain} -connect {domain}:443 "
+            f"2>/dev/null | openssl x509 -noout -enddate 2>/dev/null"
+        )
+        if "notAfter=" in raw:
+            date_str = raw.split("=", 1)[1].strip()
+            try:
+                expiry = datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
+                days = (expiry - datetime.utcnow()).days
+                if days < 7:
+                    icon = "\U0000274c"
+                elif days < 30:
+                    icon = "\U000026a0"
+                else:
+                    icon = "\U00002705"
+                msg += f"{icon} <b>{html_escape(name)}</b> ({html_escape(domain)})\n"
+                msg += f"   Expire dans <code>{days}j</code> ({html_escape(date_str)})\n\n"
+            except ValueError:
+                msg += f"\U00002753 <b>{html_escape(name)}</b>: {html_escape(raw)}\n\n"
+        else:
+            msg += f"\U0000274c <b>{html_escape(name)}</b> ({html_escape(domain)}): inaccessible\n\n"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_vpn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Peers Headscale connectes."""
+    raw = run_cmd("docker exec headscale headscale nodes list -o json 2>/dev/null")
+    msg = html_header("VPN Headscale", "\U0001f510")
+    try:
+        nodes = json.loads(raw)
+        if not nodes:
+            msg += "<i>Aucun node enregistre</i>"
+        else:
+            for node in nodes:
+                name = node.get("givenName", node.get("name", "?"))
+                online = node.get("online", False)
+                ip_list = node.get("ipAddresses", [])
+                ip_str = ", ".join(ip_list[:2]) if ip_list else "?"
+                last_seen = node.get("lastSeen", "?")
+                icon = "\U0001f7e2" if online else "\U0001f534"
+                msg += f"{icon} <b>{html_escape(str(name))}</b>\n"
+                msg += f"   IP: <code>{html_escape(ip_str)}</code>\n"
+                msg += f"   Vu: <code>{html_escape(str(last_seen)[:19])}</code>\n\n"
+    except (json.JSONDecodeError, TypeError):
+        msg += f"<pre>{html_escape(raw[:1500])}</pre>"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_security(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fail2Ban status, IPs bannies, echecs SSH."""
+    msg = html_header("Securite", "\U0001f6e1")
+    # Fail2Ban
+    f2b = run_cmd("fail2ban-client status sshd 2>/dev/null")
+    if "Currently banned" in f2b:
+        match = re.search(r"Currently banned:\s+(\d+)", f2b)
+        banned = match.group(1) if match else "?"
+        match_ip = re.search(r"Banned IP list:\s+(.*)", f2b)
+        ips = match_ip.group(1).strip() if match_ip else ""
+        msg += "<b>Fail2Ban sshd</b>\n"
+        msg += f"  Bannies: <code>{html_escape(str(banned))}</code>\n"
+        if ips:
+            msg += f"  IPs: <code>{html_escape(ips[:200])}</code>\n\n"
+    else:
+        msg += f"<b>Fail2Ban</b>: <code>{html_escape(f2b[:200])}</code>\n\n"
+    # Derniers echecs SSH
+    ssh_fails = run_cmd(
+        "journalctl -u sshd -n 50 --no-pager 2>/dev/null | "
+        "grep -i 'failed\\|invalid' | tail -5"
+    )
+    msg += "<b>Derniers echecs SSH</b>\n"
+    if ssh_fails.strip():
+        msg += f"<pre>{html_escape(ssh_fails[:800])}</pre>\n"
+    else:
+        msg += "  <i>Aucun echec recent</i>\n"
+    # UFW status
+    ufw = run_cmd("ufw status numbered 2>/dev/null | head -20")
+    msg += f"\n<b>UFW</b>\n<pre>{html_escape(ufw[:600])}</pre>"
+    await update.message.reply_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+# ─────────────────────────────────────────────
+# Commandes mute/unmute/ack
+# ─────────────────────────────────────────────
+
+@authorized
+async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Silencer les notifications pour N minutes."""
+    if context.args:
+        try:
+            minutes = int(context.args[0])
+        except ValueError:
+            minutes = 30
+    else:
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("15 min", callback_data="mute_15"),
+                InlineKeyboardButton("30 min", callback_data="mute_30"),
+                InlineKeyboardButton("60 min", callback_data="mute_60"),
+                InlineKeyboardButton("120 min", callback_data="mute_120"),
+            ]
+        ])
+        msg = html_header("Mute", "\U0001f507")
+        msg += "<i>Silencer les notifications pendant combien de temps ?</i>"
+        await update.message.reply_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+        return
+    set_mute(minutes)
+    msg = html_header("Mute", "\U0001f507")
+    msg += f"Notifications silencees pour <b>{minutes} minutes</b>.\n"
+    msg += "Utilisez /unmute pour reactiver."
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reactiver les notifications."""
+    clear_mute()
+    msg = html_header("Unmute", "\U0001f50a")
+    msg += "\U00002705 Notifications reactives."
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
+@authorized
+async def cmd_ack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Acquitter une alarme specifique."""
+    if not context.args:
+        msg = html_header("Acquittement", "\U00002705")
+        msg += "<i>Usage: /ack &lt;nom_monitor&gt;</i>\n"
+        msg += "<i>Exemple: /ack headscale</i>"
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return
+    monitor = context.args[0]
+    ack_file = Path(f"/tmp/seko-ack-{monitor}.json")
+    data = {
+        "monitor": monitor,
+        "acked_at": now_str(),
+        "acked_by": str(update.effective_user.id),
+    }
+    ack_file.write_text(json.dumps(data))
+    msg = html_header("Acquittement", "\U00002705")
+    msg += f"Alarme <b>{html_escape(monitor)}</b> acquittee.\n"
+    msg += "L'acquittement sera leve au prochain changement d'etat."
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
+# ─────────────────────────────────────────────
+# Navigation
+# ─────────────────────────────────────────────
+
+@authorized
+async def cmd_quick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Grille inline keyboard actions rapides."""
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("\U0001f4ca Status", callback_data="quick_status"),
+            InlineKeyboardButton("\U0001f433 Containers", callback_data="quick_containers"),
+        ],
+        [
+            InlineKeyboardButton("\U0001f4be Disk", callback_data="quick_disk"),
+            InlineKeyboardButton("\U0001f9e0 Memory", callback_data="quick_memory"),
+        ],
+        [
+            InlineKeyboardButton("\U0001f512 SSL", callback_data="quick_ssl"),
+            InlineKeyboardButton("\U0001f510 VPN", callback_data="quick_vpn"),
+        ],
+        [
+            InlineKeyboardButton("\U0001f6e1 Security", callback_data="quick_security"),
+            InlineKeyboardButton("\U0001f4e6 Updates", callback_data="quick_updates"),
+        ],
+    ])
+    msg = html_header("Actions rapides", "\U000026a1")
+    msg += "<i>Cliquez sur une action :</i>"
+    await update.message.reply_text(
+        msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+    )
 
 
 @authorized
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Liste des commandes disponibles."""
-    help_text = f"""[{SERVER}] 🤖 Commandes disponibles
-{'─' * 25}
-/status — Résumé Monit (état des services)
-/containers — Liste des conteneurs Docker
-/disk — Utilisation disque
-/logs <service> — 20 dernières lignes de logs
-/restart <service> — Redémarrer (avec confirmation)
-/uptime — Uptime serveur + charge
-/help — Cette aide"""
-    await update.message.reply_text(help_text)
+    """Aide complete."""
+    msg = html_header("Commandes disponibles", "\U0001f916")
+    msg += (
+        "<b>Informationnelles</b>\n"
+        "  /status \u2014 Resume Monit\n"
+        "  /services \u2014 Liste services (interactif)\n"
+        "  /containers \u2014 Conteneurs Docker\n"
+        "  /disk \u2014 Usage disque\n"
+        "  /memory \u2014 RAM et Swap\n"
+        "  /cpu \u2014 Load average + top processus\n"
+        "  /network \u2014 Ports et connexions\n"
+        "  /uptime \u2014 Uptime serveur\n\n"
+        "<b>Actions</b>\n"
+        "  /logs [service] \u2014 Dernieres lignes de logs\n"
+        "  /restart [service] \u2014 Redemarrer (avec confirmation)\n\n"
+        "<b>Monitoring</b>\n"
+        "  /updates \u2014 Paquets a mettre a jour\n"
+        "  /backup \u2014 Statut Zerobyte\n"
+        "  /ssl \u2014 Certificats TLS (expiration)\n"
+        "  /vpn \u2014 Peers VPN connectes\n"
+        "  /security \u2014 Fail2Ban, SSH, UFW\n\n"
+        "<b>Notifications</b>\n"
+        "  /mute [min] \u2014 Silencer les alertes\n"
+        "  /unmute \u2014 Reactiver les alertes\n"
+        "  /ack &lt;monitor&gt; \u2014 Acquitter une alarme\n\n"
+        "<b>Navigation</b>\n"
+        "  /quick \u2014 Actions rapides (grille)\n"
+        "  /help \u2014 Cette aide\n"
+    )
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
+
+# ─────────────────────────────────────────────
+# Callback handler centralise
+# ─────────────────────────────────────────────
+
+@authorized_callback
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dispatche les callbacks selon leur prefixe."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    # --- Quick actions ---
+    if data.startswith("quick_"):
+        action = data.replace("quick_", "")
+        dispatch = {
+            "status": _cb_status,
+            "containers": _cb_containers,
+            "disk": _cb_disk,
+            "memory": _cb_memory,
+            "ssl": _cb_ssl,
+            "vpn": _cb_vpn,
+            "security": _cb_security,
+            "updates": _cb_updates,
+        }
+        handler = dispatch.get(action)
+        if handler:
+            await handler(query)
+        return
+
+    # --- Service details ---
+    if data.startswith("svc_docker_"):
+        svc = data.replace("svc_docker_", "")
+        raw = run_cmd(
+            f'docker inspect {svc} --format "'
+            f"{{ '{{' }}.State.Status{{ '}}' }}|"
+            f"{{ '{{' }}.State.StartedAt{{ '}}' }}|"
+            f"{{ '{{' }}.Config.Image{{ '}}' }}"
+            f'" 2>/dev/null'
+        )
+        msg = html_header(f"Docker: {svc}", "\U0001f433")
+        parts = raw.replace('"', "").split("|")
+        if len(parts) >= 3:
+            status, started, image = parts[0], parts[1][:19], parts[2]
+            icon = "\U00002705" if status == "running" else "\U0000274c"
+            msg += f"  {icon} Status: <code>{html_escape(status)}</code>\n"
+            msg += f"  Demarre: <code>{html_escape(started)}</code>\n"
+            msg += f"  Image: <code>{html_escape(image)}</code>\n"
+        else:
+            msg += f"<pre>{html_escape(raw)}</pre>"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("\U0001f4cb Logs", callback_data=f"logs_{svc}"),
+                InlineKeyboardButton("\U0001f504 Restart", callback_data=f"restart_ask_{svc}"),
+            ]
+        ])
+        await query.edit_message_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+        return
+
+    if data.startswith("svc_systemd_"):
+        svc = data.replace("svc_systemd_", "")
+        raw = run_cmd(f"systemctl status {svc} --no-pager -l 2>/dev/null | head -10")
+        msg = html_header(f"Systemd: {svc}", "\U00002699\U0000fe0f")
+        msg += f"<pre>{html_escape(raw)}</pre>"
+        await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        return
+
+    # --- Logs callback ---
+    if data.startswith("logs_"):
+        svc = data.replace("logs_", "")
+        output = _get_logs(svc)
+        msg = html_header(f"Logs {svc}", "\U0001f4cb")
+        msg += f"<pre>{html_escape(output)}</pre>"
+        await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+        return
+
+    # --- Restart flow ---
+    if data.startswith("restart_ask_"):
+        svc = data.replace("restart_ask_", "")
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "\U00002705 Confirmer", callback_data=f"restart_yes_{svc}",
+                ),
+                InlineKeyboardButton(
+                    "\U0000274c Annuler", callback_data="restart_no",
+                ),
+            ]
+        ])
+        msg = html_header(f"Restart {svc}", "\U000026a0")
+        msg += f"Confirmer le redemarrage de <b>{html_escape(svc)}</b> ?"
+        await query.edit_message_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard,
+        )
+        return
+
+    if data.startswith("restart_yes_"):
+        svc = data.replace("restart_yes_", "")
+        msg = html_header(f"Restart {svc}", "\U0001f504")
+        msg += f"Redemarrage de <b>{html_escape(svc)}</b> en cours...\n\n"
+        output = run_cmd(f"docker restart {svc} 2>/dev/null")
+        if "No such container" in output or "Error" in output:
+            output = run_cmd(
+                f"systemctl restart {svc} 2>/dev/null && echo 'OK' || echo 'ERREUR'"
+            )
+        msg += f"Resultat: <code>{html_escape(output[:500])}</code>"
+        await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        return
+
+    if data == "restart_no":
+        msg = html_header("Restart", "\U0000274c")
+        msg += "Redemarrage annule."
+        await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        return
+
+    # --- Mute callback ---
+    if data.startswith("mute_"):
+        try:
+            minutes = int(data.replace("mute_", ""))
+        except ValueError:
+            minutes = 30
+        set_mute(minutes)
+        msg = html_header("Mute", "\U0001f507")
+        msg += f"Notifications silencees pour <b>{minutes} minutes</b>.\n"
+        msg += "Utilisez /unmute pour reactiver."
+        await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+        return
+
+
+# --- Quick callback helpers ---
+
+
+async def _cb_status(query):
+    """Quick callback: Monit status."""
+    raw = run_cmd("monit summary 2>/dev/null || echo 'Monit indisponible'")
+    msg = html_header("Monit Status", "\U0001f4ca")
+    for line in raw.split("\n"):
+        if not line.strip():
+            continue
+        if "OK" in line or "Running" in line or "Accessible" in line:
+            msg += f"\U00002705 <code>{html_escape(line.strip())}</code>\n"
+        elif "FAILED" in line or "Does not exist" in line:
+            msg += f"\U0000274c <code>{html_escape(line.strip())}</code>\n"
+        else:
+            msg += f"  <code>{html_escape(line.strip())}</code>\n"
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_containers(query):
+    """Quick callback: Docker containers."""
+    raw = run_cmd(
+        'docker ps -a --format "'
+        "{{ '{{' }}.Names{{ '}}' }}|"
+        "{{ '{{' }}.Status{{ '}}' }}"
+        '"'
+    )
+    msg = html_header("Conteneurs", "\U0001f433")
+    for line in raw.split("\n"):
+        if "|" not in line:
+            continue
+        name, status = line.split("|", 1)
+        icon = "\U00002705" if "Up" in status else "\U0000274c"
+        msg += (
+            f"{icon} <b>{html_escape(name.strip())}</b>: "
+            f"<code>{html_escape(status.strip())}</code>\n"
+        )
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_disk(query):
+    """Quick callback: Disk usage."""
+    raw = run_cmd("df -h --output=target,pcent -x tmpfs -x devtmpfs 2>/dev/null")
+    msg = html_header("Disque", "\U0001f4be")
+    for line in raw.split("\n")[1:]:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            pct = int(parts[1].replace("%", ""))
+        except ValueError:
+            continue
+        msg += f"<b>{html_escape(parts[0])}</b>  {progress_bar(pct)}\n"
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_memory(query):
+    """Quick callback: Memory usage."""
+    raw = run_cmd("free -m | grep Mem")
+    msg = html_header("Memoire", "\U0001f9e0")
+    parts = raw.split()
+    if len(parts) >= 3:
+        try:
+            total, used = int(parts[1]), int(parts[2])
+            pct = (used / total * 100) if total > 0 else 0
+            msg += f"RAM: {progress_bar(pct)}  <code>{used}/{total} Mo</code>\n"
+        except (ValueError, IndexError):
+            msg += f"<pre>{html_escape(raw)}</pre>"
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_ssl(query):
+    """Quick callback: SSL certificates."""
+    msg = html_header("SSL", "\U0001f512")
+    for name, domain in DOMAINS.items():
+        if not domain:
+            continue
+        raw = run_cmd(
+            f"echo | openssl s_client -servername {domain} -connect {domain}:443 "
+            f"2>/dev/null | openssl x509 -noout -enddate 2>/dev/null"
+        )
+        if "notAfter=" in raw:
+            date_str = raw.split("=", 1)[1].strip()
+            try:
+                expiry = datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
+                days = (expiry - datetime.utcnow()).days
+                if days < 7:
+                    icon = "\U0000274c"
+                elif days < 30:
+                    icon = "\U000026a0"
+                else:
+                    icon = "\U00002705"
+                msg += f"{icon} <b>{html_escape(name)}</b>: {days}j\n"
+            except ValueError:
+                msg += f"\U00002753 {html_escape(name)}\n"
+        else:
+            msg += f"\U0000274c {html_escape(name)}\n"
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_vpn(query):
+    """Quick callback: VPN peers."""
+    raw = run_cmd("docker exec headscale headscale nodes list -o json 2>/dev/null")
+    msg = html_header("VPN", "\U0001f510")
+    try:
+        nodes = json.loads(raw)
+        for node in nodes:
+            name = node.get("givenName", node.get("name", "?"))
+            online = node.get("online", False)
+            icon = "\U0001f7e2" if online else "\U0001f534"
+            msg += f"{icon} <b>{html_escape(str(name))}</b>\n"
+    except (json.JSONDecodeError, TypeError):
+        msg += "<i>Erreur de lecture</i>"
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_security(query):
+    """Quick callback: Security overview."""
+    f2b = run_cmd("fail2ban-client status sshd 2>/dev/null")
+    msg = html_header("Securite", "\U0001f6e1")
+    match = re.search(r"Currently banned:\s+(\d+)", f2b)
+    banned = match.group(1) if match else "?"
+    msg += f"Fail2Ban: <code>{html_escape(str(banned))}</code> IP(s) bannies\n"
+    ufw = run_cmd("ufw status 2>/dev/null | head -5")
+    msg += f"\n<pre>{html_escape(ufw)}</pre>"
+    await query.edit_message_text(truncate(msg), parse_mode=ParseMode.HTML)
+
+
+async def _cb_updates(query):
+    """Quick callback: Available updates."""
+    raw = run_cmd("apt list --upgradable 2>/dev/null")
+    lines = [ln for ln in raw.split("\n") if "/" in ln]
+    msg = html_header("Updates", "\U0001f4e6")
+    msg += f"<b>{len(lines)}</b> paquet(s) a mettre a jour"
+    await query.edit_message_text(msg, parse_mode=ParseMode.HTML)
+
+
+# ─────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────
 
 def main():
-    """Point d'entrée du bot."""
+    """Point d'entree du bot."""
     if not TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN non défini !")
+        logger.error("TELEGRAM_BOT_TOKEN non defini !")
         return
     if not ALLOWED_IDS:
-        logger.error("ALLOWED_CHAT_IDS non défini !")
+        logger.error("ALLOWED_CHAT_IDS non defini !")
         return
 
     app = Application.builder().token(TOKEN).build()
 
+    # Commandes informationnelles
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("services", cmd_services))
     app.add_handler(CommandHandler("containers", cmd_containers))
     app.add_handler(CommandHandler("disk", cmd_disk))
+    app.add_handler(CommandHandler("memory", cmd_memory))
+    app.add_handler(CommandHandler("cpu", cmd_cpu))
+    app.add_handler(CommandHandler("network", cmd_network))
+    app.add_handler(CommandHandler("uptime", cmd_uptime))
+
+    # Commandes actions
     app.add_handler(CommandHandler("logs", cmd_logs))
     app.add_handler(CommandHandler("restart", cmd_restart))
-    app.add_handler(CommandHandler("restart_confirm", cmd_restart_confirm))
-    app.add_handler(CommandHandler("uptime", cmd_uptime))
+
+    # Commandes monitoring
+    app.add_handler(CommandHandler("updates", cmd_updates))
+    app.add_handler(CommandHandler("backup", cmd_backup))
+    app.add_handler(CommandHandler("ssl", cmd_ssl))
+    app.add_handler(CommandHandler("vpn", cmd_vpn))
+    app.add_handler(CommandHandler("security", cmd_security))
+
+    # Commandes notifications
+    app.add_handler(CommandHandler("mute", cmd_mute))
+    app.add_handler(CommandHandler("unmute", cmd_unmute))
+    app.add_handler(CommandHandler("ack", cmd_ack))
+
+    # Navigation
+    app.add_handler(CommandHandler("quick", cmd_quick))
     app.add_handler(CommandHandler("help", cmd_help))
 
-    logger.info(f"Bot démarré pour le serveur [{SERVER}]")
+    # Callback handler centralise
+    app.add_handler(CallbackQueryHandler(handle_callback))
+
+    logger.info("Bot demarre pour le serveur [%s]", SERVER)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

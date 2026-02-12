@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""
+Uptime Kuma — Configuration automatique des monitors et notifications.
+Script idempotent : verifie l'existence avant creation.
+Gere par Ansible (Jinja2 template).
+"""
+import json
+import sys
+import time
+
+from uptime_kuma_api import UptimeKumaApi, MonitorType
+
+API_URL = "http://127.0.0.1:3001"
+USERNAME = "admin"
+PASSWORD = "{{ vault_uptime_kuma_admin_password }}"
+
+# --- Monitors a creer ---
+MONITORS = [
+    {
+        "name": "Headscale API",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ domain_headscale }}",
+        "interval": 60,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299", "401"],
+    },
+    {
+        "name": "Headplane UI",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ domain_headplane }}",
+        "interval": 60,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299", "401"],
+    },
+    {
+        "name": "Vaultwarden",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ domain_vaultwarden }}",
+        "interval": 60,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299"],
+    },
+    {
+        "name": "Portainer",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ domain_portainer }}",
+        "interval": 60,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299"],
+    },
+    {
+        "name": "Zerobyte",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ domain_zerobyte }}",
+        "interval": 120,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299", "401"],
+    },
+    {
+        "name": "Uptime Kuma",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ domain_uptime_kuma }}",
+        "interval": 120,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299"],
+    },
+    {
+        "name": "SSH",
+        "type": MonitorType.PORT,
+        "hostname": "{{ server_ip }}",
+        "port": {{ ssh_custom_port }},
+        "interval": 120,
+        "maxretries": 3,
+    },
+    {
+        "name": "DNS {{ domain_headscale }}",
+        "type": MonitorType.DNS,
+        "hostname": "{{ domain_headscale }}",
+        "dns_resolve_server": "1.1.1.1",
+        "interval": 300,
+        "maxretries": 3,
+    },
+]
+
+# --- Notification Telegram ---
+TELEGRAM_NOTIFICATION = {
+    "name": "Seko Telegram",
+    "type": "telegram",
+    "isDefault": True,
+    "telegramBotToken": "{{ vault_telegram_bot_token }}",
+    "telegramChatID": "{{ vault_telegram_chat_id }}",
+}
+
+
+def main():
+    """Configure Uptime Kuma : login/setup, monitors, notifications."""
+    created_count = 0
+    api = UptimeKumaApi(API_URL)
+
+    # --- Login ou premier setup ---
+    try:
+        api.login(USERNAME, PASSWORD)
+        print(f"INFO: Logged in as {USERNAME}")
+    except Exception:
+        try:
+            api.setup(USERNAME, PASSWORD)
+            print(f"INFO: First-time setup done for {USERNAME}")
+            api.login(USERNAME, PASSWORD)
+        except Exception as exc:
+            print(f"ERROR: Cannot login or setup: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+    # --- Notification Telegram ---
+    existing_notifs = api.get_notifications()
+    notif_names = [n.get("name", "") for n in existing_notifs]
+
+    if TELEGRAM_NOTIFICATION["name"] not in notif_names:
+        api.add_notification(**TELEGRAM_NOTIFICATION)
+        print(f"CREATED notification: {TELEGRAM_NOTIFICATION['name']}")
+        created_count += 1
+    else:
+        print(f"EXISTS notification: {TELEGRAM_NOTIFICATION['name']}")
+
+    # Recuperer l'ID de la notification pour l'attacher aux monitors
+    updated_notifs = api.get_notifications()
+    notif_id = None
+    for n in updated_notifs:
+        if n.get("name") == TELEGRAM_NOTIFICATION["name"]:
+            notif_id = n.get("id")
+            break
+
+    # --- Monitors ---
+    existing_monitors = api.get_monitors()
+    monitor_names = [m.get("name", "") for m in existing_monitors]
+
+    for monitor_def in MONITORS:
+        if monitor_def["name"] in monitor_names:
+            print(f"EXISTS monitor: {monitor_def['name']}")
+            continue
+
+        # Attacher la notification Telegram au monitor
+        if notif_id is not None:
+            monitor_def["notificationIDList"] = {str(notif_id): True}
+
+        try:
+            api.add_monitor(**monitor_def)
+            print(f"CREATED monitor: {monitor_def['name']}")
+            created_count += 1
+        except Exception as exc:
+            print(f"ERROR creating {monitor_def['name']}: {exc}", file=sys.stderr)
+
+    api.disconnect()
+    print(f"\nSummary: {created_count} created, "
+          f"{len(MONITORS) + 1 - created_count} already existed")
+
+
+if __name__ == "__main__":
+    main()
