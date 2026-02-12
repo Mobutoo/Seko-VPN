@@ -61,6 +61,13 @@
     comment: "SSH custom"
   when: ansible_virtualization_type != "docker"
 
+- name: Récupérer l'IP du déployeur via SSH_CLIENT
+  ansible.builtin.set_fact:
+    security_deployer_ip: "{{ ansible_env.SSH_CLIENT.split()[0] }}"
+  when:
+    - ansible_virtualization_type != "docker"
+    - ansible_env.SSH_CLIENT is defined
+
 - name: Configurer Fail2Ban
   ansible.builtin.copy:
     dest: /etc/fail2ban/jail.local
@@ -85,6 +92,46 @@
     state: started
     enabled: true
   when: ansible_virtualization_type != "docker"
+
+- name: "Débannir l'IP du déployeur si bannie"
+  ansible.builtin.command:
+    cmd: "fail2ban-client set sshd unbanip {{ security_deployer_ip }}"
+  register: security_unban_result
+  changed_when: "'is not banned' not in security_unban_result.stderr"
+  failed_when: false
+  when:
+    - ansible_virtualization_type != "docker"
+    - security_deployer_ip | default('') | length > 0
+
+- name: "Whitelister temporairement l'IP du déployeur (48h)"
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.d/deployer-whitelist.local
+    content: |
+      # Whitelist temporaire du deployeur ({{ security_deployer_ip }})
+      # Generee par Ansible le {{ ansible_date_time.iso8601 }}
+      # Nettoyee automatiquement apres 48h par cron
+      [DEFAULT]
+      ignoreip = 127.0.0.1/8 ::1 {{ security_deployer_ip }}
+    mode: "0644"
+  notify: Restart fail2ban
+  when:
+    - ansible_virtualization_type != "docker"
+    - security_deployer_ip | default('') | length > 0
+
+- name: Programmer le nettoyage du whitelist dans 48h
+  ansible.builtin.cron:
+    name: "fail2ban-remove-deployer-whitelist"
+    job: >-
+      rm -f /etc/fail2ban/jail.d/deployer-whitelist.local &&
+      systemctl reload fail2ban 2>/dev/null;
+      crontab -l 2>/dev/null | grep -v fail2ban-remove-deployer-whitelist | crontab -
+    minute: "{{ '%M' | strftime(ansible_date_time.epoch | int + 172800) }}"
+    hour: "{{ '%H' | strftime(ansible_date_time.epoch | int + 172800) }}"
+    day: "{{ '%d' | strftime(ansible_date_time.epoch | int + 172800) }}"
+    month: "{{ '%m' | strftime(ansible_date_time.epoch | int + 172800) }}"
+  when:
+    - ansible_virtualization_type != "docker"
+    - security_deployer_ip | default('') | length > 0
 
 - name: Configurer sysctl de sécurité
   ansible.posix.sysctl:
