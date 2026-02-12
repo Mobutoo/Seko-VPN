@@ -54,9 +54,10 @@
 - name: Attendre qu'Uptime Kuma soit accessible
   ansible.builtin.uri:
     url: "http://127.0.0.1:3001"
-    status_code: [200, 401]
+    status_code: [200, 301, 302, 401]
+    follow_redirects: none
   register: uptime_kuma_health
-  until: uptime_kuma_health.status in [200, 401]
+  until: uptime_kuma_health.status in [200, 301, 302, 401]
   retries: 30
   delay: 5
   when: not (ci_mode | default(false))
