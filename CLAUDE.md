@@ -82,7 +82,7 @@ Le projet est concu comme un **template portable** : toutes les valeurs sont des
 - **SSH** : port custom (`ssh_custom_port: 804`), cle publique Ed25519 uniquement
 - **Secrets** : tous dans `inventory/group_vars/all/vault.yml` chiffre avec Ansible Vault
 - **Jamais de secret en clair** dans les fichiers YAML, templates, ou scripts
-- **Ports ouverts (UFW)** : 22 (ou custom), 80 (redirect HTTPS), 443 (TLS), 41641/UDP (WireGuard)
+- **Ports ouverts (UFW)** : 22 (ou custom), 80 (redirect HTTPS), 443 (TLS), 41641/UDP (WireGuard), 3478/UDP (STUN/DERP embarque Headscale)
 - **Fail2Ban** surveille les tentatives SSH
 - **Contraintes critiques sur les secrets** :
   - `vault_monit_password` : alphanumerique UNIQUEMENT (pas de `"`, `#`, `{`, `}`), sinon Monit refuse de demarrer
@@ -300,6 +300,9 @@ Magic DNS interne : *.na.ewutelo.cloud (resolution VPN uniquement)
 - **Verifier** : Ansible (pas Testinfra)
 - **`ANSIBLE_ROLES_PATH`** : `../../../../roles` (pour les dependances inter-roles)
 - **Headplane** : skip idempotence en CI (container crash-loop normal)
+- **Piège `creates:` + `changed_when: true`** : echec idempotence au 2e run (tache skippee mais marquee changed)
+  → Fix : `changed_when: _var.stdout is not search('skipped')` pour detecter si la tache a vraiment tourne
+- **Nouvelle variable dans un template** : toujours ajouter dans `defaults/main.yml` ET `molecule/default/converge.yml`
 
 ### Secrets — Contraintes critiques
 
@@ -310,6 +313,23 @@ Magic DNS interne : *.na.ewutelo.cloud (resolution VPN uniquement)
 | `vault_headplane_cookie_secret` | Exactement 32 caracteres | Authentification echoue |
 | `vault_vaultwarden_admin_token` | Base64, 32 chars | UI admin inaccessible |
 | `uptime_kuma_admin_username` | **Sensible a la casse** (`admin` ≠ `Admin`) | Monitors non crees (skip silencieux) |
+
+### Headscale extra_records — Pièges critiques
+
+- **`server_tailscale_ip`** = IP publique IONOS (`87.106.30.160`), **pas** `100.64.x.x` — le VPS n'est pas client de lui-meme
+- **Bootstrap DNS circulaire** : si un noeud resout `singa.ewutelo.cloud` → sa propre IP (cache Tailscale corrompu),
+  il ne peut plus rejoindre Headscale → fix temporaire : `echo "87.106.30.160 singa.ewutelo.cloud" | sudo tee -a /etc/hosts`
+  puis `sudo systemctl restart tailscaled` (supprimer l'entree /etc/hosts apres reconnexion)
+- **Apres `docker restart headscale`** : toujours redemarrer Headplane (`sudo docker restart headplane`)
+- **Diagnostiquer depuis un noeud** : `curl -v https://singa.ewutelo.cloud/health` — doit retourner `{"status":"pass"}`
+
+### Pipeline CI — Comportement multi-commits
+
+- **Commits rapides groupes** : GitHub Actions peut ne lancer qu'un seul pipeline pour plusieurs commits pushes
+  rapidement → si le pipeline echoue sur un commit intermediaire, forcer un nouveau run :
+  `git commit --allow-empty -m 'ci: relancer le pipeline'`
+- **Pas de `workflow_dispatch`** : impossible de relancer manuellement sans nouveau commit
+- **Deploy (stage 4)** : attend une approbation manuelle via environment `production` sur GitHub Actions UI
 
 ### Grafana Alloy
 
@@ -325,6 +345,34 @@ Magic DNS interne : *.na.ewutelo.cloud (resolution VPN uniquement)
   git config --global --add safe.directory '%(prefix)///wsl.localhost/Ubuntu/home/asus/seko/VPN/Seko-VPN'
   ```
 - **WSL repair** : `make wsl-repair` corrige les problemes DNS/systemd courants
+
+## Infrastructure Multi-Serveurs (Réseau Headscale)
+
+Seko-VPN est le **coordinateur central** d'un réseau Tailscale multi-nœuds :
+
+| Nœud | IP publique | IP Tailscale | Role |
+|------|-------------|--------------|------|
+| `vps` (IONOS) | `87.106.30.160` | N/A (coordinateur) | Seko-VPN (14 roles) |
+| `sese` (Javisi) | `137.74.114.167` | `100.64.0.14` | VPAI (n8n, LiteLLM, Grafana, Qdrant…) |
+| `ewutelo` (Windows) | — | `100.64.0.2` | Machine de developpement |
+
+- **`server_tailscale_ip`** dans `vars.yml` = IP **publique** IONOS (`87.106.30.160`), **pas** une IP `100.64.x.x`
+  → Le VPS coordinateur Headscale n'est pas client de lui-meme
+- **Domaines des autres noeuds** : variable `nodes_extra_records` dans `vars.yml` — liste declarative avec `tailscale_ip` et `domains`
+- **Ajouter un noeud** : ajouter une entree `nodes_extra_records` + redéployer `--tags headscale`
+- **Verifier la propagation DNS** : `powershell.exe -Command "Resolve-DnsName qd.ewutelo.cloud"`
+  → doit retourner l'IP Tailscale du noeud (ex: `100.64.0.14`), pas l'IP publique OVH
+
+## Acces SSH au VPS
+
+- **Cle SSH** : `/home/asus/.ssh/seko-vpn-deploy` (WSL) — **pas** `id_ed25519_seko`
+- **User** : `mobuone`
+- **Port** : `22` (avant hardening SSH) ou `804` (apres hardening SSH actif)
+- **Via WSL** : `ssh -i /home/asus/.ssh/seko-vpn-deploy -p 22 mobuone@87.106.30.160`
+- **Via PowerShell** : `ssh -i '\\wsl.localhost\Ubuntu\home\asus\.ssh\seko-vpn-deploy' -p 22 mobuone@87.106.30.160`
+- **Tailscale** : WSL n'a **pas** acces au daemon Tailscale Windows → utiliser PowerShell pour SSH via `100.64.x.x`
+- **Test port** : `powershell.exe -Command "Test-NetConnection -ComputerName 87.106.30.160 -Port 804 | Select TcpTestSucceeded"`
+- **Tailscale status** : `powershell.exe -Command "tailscale status"` (depuis WSL uniquement via PowerShell)
 
 ## Feuille de Route V4
 
