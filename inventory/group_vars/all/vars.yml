@@ -1,7 +1,7 @@
 ---
 # vars.yml — Généré par wizard.sh le 2026-02-09
 server_ip: "87.106.30.160"
-server_tailscale_ip: "100.64.0.14"
+server_tailscale_ip: "87.106.30.160"
 system_user: "mobuone"
 system_user_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGX60wjMX/3O1igvHTBlnq3lHVmQ1+1VZQduudw3D6M/ seko-vpn-deploy"
 domain_headscale: "singa.ewutelo.cloud"
