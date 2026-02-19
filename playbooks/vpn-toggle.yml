@@ -84,6 +84,8 @@
 - name: "VPN Toggle — Apply changes"
   hosts: all
   gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../roles/caddy/defaults/main.yml"
   tasks:
     # --- DEAD MAN SWITCH ---
     - name: "SÉCURITÉ: Armer le dead man switch (revert UFW dans 15 min)"
