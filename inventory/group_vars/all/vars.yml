@@ -1,6 +1,7 @@
 ---
 # vars.yml — Généré par wizard.sh le 2026-02-09
 server_ip: "87.106.30.160"
+server_tailscale_ip: "100.64.0.14"
 system_user: "mobuone"
 system_user_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGX60wjMX/3O1igvHTBlnq3lHVmQ1+1VZQduudw3D6M/ seko-vpn-deploy"
 domain_headscale: "singa.ewutelo.cloud"
@@ -39,6 +40,7 @@ monit_containers:
   - uptime-kuma
 telegram_bot_server_name: "Seko"
 alloy_loki_url: ""
+docker_proxy_net_subnet: "10.10.0.0/24"
 hardening_swap_size: "2G"
 hardening_journal_max_use: "500M"
 hardening_journal_max_retention: "30day"

@@ -17,7 +17,7 @@ derp:
     stun_listen_addr: 0.0.0.0:3478
     private_key_path: /var/lib/headscale/derp_server_private.key
     automatically_add_embedded_derp_region: true
-    ipv4: {{ server_ip }}
+    ipv4: "{{ server_ip }}"
   urls: []
   paths: []
   auto_update_enabled: false
@@ -29,14 +29,34 @@ database:
     path: /var/lib/headscale/db.sqlite
 dns:
   magic_dns: true
-  base_domain: {{ headscale_base_domain }}
-  override_local_dns: false
+  base_domain: "{{ headscale_base_domain }}"
+  override_local_dns: true
   nameservers:
     global:
       - 1.1.1.1
       - 8.8.8.8
     split: {}
   search_domains: []
-  extra_records: []
+  # Extra records : résolution VPN-aware pour tous les clients Tailscale
+  # Fonctionne sur WiFi public, 4G, téléphone — indépendant du DNS local
+  extra_records:
+    - name: "{{ domain_headscale }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
+    - name: "{{ domain_headplane }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
+    - name: "{{ domain_vaultwarden }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
+    - name: "{{ domain_portainer }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
+    - name: "{{ domain_zerobyte }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
+    - name: "{{ domain_uptime_kuma }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
 log:
   level: info

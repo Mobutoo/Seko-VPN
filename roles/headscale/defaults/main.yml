@@ -4,3 +4,6 @@ headscale_data_path: "/opt/services/headscale"
 domain_headscale: "hs.example.com"
 headscale_base_domain: "vpn.example.com"
 server_ip: "127.0.0.1"
+# IP Tailscale du serveur (100.64.x.x) — utilisée dans extra_records DNS
+# pour que tous les clients résolvent les domaines via le mesh VPN
+server_tailscale_ip: "100.64.0.1"
