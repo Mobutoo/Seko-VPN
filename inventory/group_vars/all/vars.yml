@@ -44,3 +44,14 @@ docker_proxy_net_subnet: "10.10.0.0/24"
 hardening_swap_size: "2G"
 hardening_journal_max_use: "500M"
 hardening_journal_max_retention: "30day"
+# Extra records DNS pour les autres noeuds du réseau Tailscale
+# Chaque noeud expose ses domaines via son IP Tailscale (résolution VPN-aware)
+nodes_extra_records:
+  - name: "sese"
+    tailscale_ip: "100.64.0.14"
+    domains:
+      - "javisi.ewutelo.cloud"
+      - "tala.ewutelo.cloud"
+      - "mayi.ewutelo.cloud"
+      - "llm.ewutelo.cloud"
+      - "qd.ewutelo.cloud"

@@ -57,6 +57,15 @@ dns:
       value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
     - name: "{{ domain_uptime_kuma }}"
       type: A
-      value: "{{ server_tailscale_ip | default('100.64.0.14') }}"
+      value: "{{ server_tailscale_ip | default('87.106.30.160') }}"
+{% if nodes_extra_records is defined and nodes_extra_records | length > 0 %}
+{% for node in nodes_extra_records %}
+{% for domain in node.domains %}
+    - name: "{{ domain }}"
+      type: A
+      value: "{{ node.tailscale_ip }}"
+{% endfor %}
+{% endfor %}
+{% endif %}
 log:
   level: info

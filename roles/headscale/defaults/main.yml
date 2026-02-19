@@ -7,3 +7,6 @@ server_ip: "127.0.0.1"
 # IP Tailscale du serveur (100.64.x.x) — utilisée dans extra_records DNS
 # pour que tous les clients résolvent les domaines via le mesh VPN
 server_tailscale_ip: "100.64.0.1"
+# Extra records DNS pour les autres noeuds du réseau Tailscale
+# Liste vide par défaut (CI/Molecule) — override dans group_vars/all/vars.yml
+nodes_extra_records: []
