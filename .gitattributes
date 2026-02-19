@@ -1,0 +1,12 @@
+# Forcer LF pour tous les fichiers texte (WSL/Windows safe)
+# Cf. CLAUDE.md : "TOUS les fichiers YAML/Jinja2 doivent être en UTF-8 avec fins de ligne LF (Unix)"
+* text=auto eol=lf
+
+# Fichiers binaires — pas de conversion
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.gz binary
+*.zip binary
+*.tar binary

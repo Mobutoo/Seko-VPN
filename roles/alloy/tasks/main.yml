@@ -13,7 +13,7 @@
       set -o pipefail
       curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/grafana.gpg
     creates: /usr/share/keyrings/grafana.gpg
-  changed_when: false
+  changed_when: true
 
 - name: Ajouter le dépôt Grafana
   ansible.builtin.copy:
