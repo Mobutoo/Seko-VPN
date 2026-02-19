@@ -1,5 +1,6 @@
 ---
 caddy_data_path: "/opt/services/caddy"
+caddy_version: "2.9.1"
 domain_headscale: "hs.example.com"
 domain_headplane: "nga.example.com"
 domain_vaultwarden: "vault.example.com"
@@ -8,3 +9,9 @@ domain_zerobyte: "zb.example.com"
 domain_uptime_kuma: "status.example.com"
 acme_email: "admin@example.com"
 ci_mode: false
+# Sous-réseau Docker bridge (gateway masquée par DNAT HTTP/3 QUIC — REX-34)
+# Synchronisé avec docker_proxy_net_subnet (roles/docker/defaults/main.yml)
+caddy_docker_subnet: "{{ docker_proxy_net_subnet | default('10.10.0.0/24') }}"
+# --- VPN-only mode (bascule via playbooks/vpn-toggle.yml) ---
+caddy_vpn_enforce: false
+caddy_vpn_cidr: "100.64.0.0/10"

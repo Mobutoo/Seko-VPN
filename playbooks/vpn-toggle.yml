@@ -1,0 +1,283 @@
+---
+# playbooks/vpn-toggle.yml — Bascule VPN-Only Seko-VPN
+#
+# Usage:
+#   ansible-playbook playbooks/vpn-toggle.yml -e "vpn_mode=on" --ask-vault-pass
+#   ansible-playbook playbooks/vpn-toggle.yml -e "vpn_mode=off" --ask-vault-pass
+#
+# Make shortcuts:
+#   make vpn-on    → bascule mode VPN-only
+#   make vpn-off   → retour mode public
+#
+# Architecture :
+#   Mode PUBLIC   : Internet -> ports 80+443 ouverts -> Caddy (HTTP-01) -> services
+#   Mode VPN-ONLY : VPN mesh -> port 443 restreint au CIDR VPN -> Caddy -> services
+#                   Headscale + Uptime Kuma restent publics
+#
+# Sécurité : dead man switch via `at` — si le toggle échoue à mi-chemin,
+# UFW est automatiquement reverté en mode ouvert après 15 minutes.
+
+# ============================================================
+# PLAY 1 : Validation du paramètre vpn_mode
+# ============================================================
+- name: "VPN Toggle — Validate input"
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: "Vérifier le paramètre vpn_mode"
+      ansible.builtin.assert:
+        that:
+          - vpn_mode is defined
+          - vpn_mode in ['on', 'off']
+        fail_msg: >
+          Variable vpn_mode requise (on|off).
+          Usage: ansible-playbook playbooks/vpn-toggle.yml -e "vpn_mode=on"
+
+    - name: "Afficher la direction du toggle"
+      ansible.builtin.debug:
+        msg:
+          - "══════════════════════════════════════════"
+          - "  VPN TOGGLE → {{ 'VPN-ONLY' if vpn_mode == 'on' else 'PUBLIC' }}"
+          - "══════════════════════════════════════════"
+
+# ============================================================
+# PLAY 2 : Pre-flight checks
+# ============================================================
+- name: "VPN Toggle — Pre-flight checks"
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: "PRE-FLIGHT 1/4: Vérifier la connexion SSH"
+      ansible.builtin.ping:
+
+    - name: "PRE-FLIGHT 2/4: Valider la config sshd"
+      ansible.builtin.command:
+        cmd: sshd -t
+      changed_when: false
+
+    - name: "PRE-FLIGHT 3/4: Vérifier le port SSH dans UFW"
+      ansible.builtin.command:
+        cmd: ufw status
+      changed_when: false
+      register: _ufw_status
+
+    - name: "PRE-FLIGHT 3/4: Confirmer le port SSH autorisé"
+      ansible.builtin.assert:
+        that:
+          - "_ufw_status.stdout is search(ssh_custom_port | string)"
+        fail_msg: "ARRÊT : port SSH {{ ssh_custom_port }} absent des règles UFW !"
+
+    - name: "PRE-FLIGHT 4/4: Vérifier les conteneurs critiques"
+      ansible.builtin.command:
+        cmd: docker ps --format "{{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+      changed_when: false
+      register: _containers
+
+    - name: "PRE-FLIGHT: Afficher les conteneurs"
+      ansible.builtin.debug:
+        msg: "{{ _containers.stdout_lines }}"
+
+# ============================================================
+# PLAY 3 : Toggle (dead man switch + UFW + Caddy)
+# ============================================================
+- name: "VPN Toggle — Apply changes"
+  hosts: all
+  gather_facts: false
+  tasks:
+    # --- DEAD MAN SWITCH ---
+    - name: "SÉCURITÉ: Armer le dead man switch (revert UFW dans 15 min)"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          OUTPUT=$(echo "ufw --force reset && \
+                ufw default deny incoming && \
+                ufw default allow outgoing && \
+                ufw allow {{ ssh_custom_port }}/tcp && \
+                ufw allow 80/tcp && \
+                ufw allow 443/tcp && \
+                ufw allow 443/udp && \
+                ufw allow 41641/udp && \
+                ufw allow 3478/udp && \
+                ufw --force enable" | at now + 15 minutes 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -oP 'job\s+\K\d+'
+      register: _dms_output
+      changed_when: true
+
+    # --- UFW TOGGLE ---
+    - name: "UFW: Reset firewall"
+      community.general.ufw:
+        state: reset
+
+    - name: "UFW: Politique par défaut — deny incoming"
+      community.general.ufw:
+        default: deny
+        direction: incoming
+
+    - name: "UFW: Politique par défaut — allow outgoing"
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+
+    - name: "UFW: Autoriser SSH"
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_custom_port }}"
+        proto: tcp
+
+    - name: "UFW: Autoriser WireGuard UDP"
+      community.general.ufw:
+        rule: allow
+        port: "41641"
+        proto: udp
+
+    - name: "UFW: Autoriser STUN/DERP UDP"
+      community.general.ufw:
+        rule: allow
+        port: "3478"
+        proto: udp
+
+    # Mode PUBLIC : ports 80+443 ouverts à tous
+    - name: "UFW PUBLIC: Ouvrir HTTP et HTTPS"
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "80"
+        - "443"
+      when: vpn_mode == 'off'
+
+    - name: "UFW PUBLIC: Ouvrir HTTPS UDP (HTTP/3 QUIC)"
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: udp
+      when: vpn_mode == 'off'
+
+    # Mode VPN-ONLY : port 80 reste ouvert pour ACME (Let's Encrypt HTTP-01)
+    - name: "UFW VPN-ONLY: Garder HTTP ouvert pour ACME (Let's Encrypt)"
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+      when: vpn_mode == 'on'
+
+    # Mode VPN-ONLY : port 443 restreint au CIDR VPN
+    - name: "UFW VPN-ONLY: HTTPS TCP restreint au CIDR VPN"
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+        from_ip: "{{ caddy_vpn_cidr | default('100.64.0.0/10') }}"
+      when: vpn_mode == 'on'
+
+    - name: "UFW VPN-ONLY: HTTPS UDP restreint au CIDR VPN"
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: udp
+        from_ip: "{{ caddy_vpn_cidr | default('100.64.0.0/10') }}"
+      when: vpn_mode == 'on'
+
+    - name: "UFW: Activer le firewall"
+      community.general.ufw:
+        state: enabled
+
+    # --- CADDY TOGGLE ---
+    - name: "CADDY: Redéployer le Caddyfile"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/caddy/templates/Caddyfile.j2"
+        dest: "{{ caddy_data_path }}/conf/Caddyfile"
+        mode: "0644"
+      vars:
+        caddy_vpn_enforce: "{{ vpn_mode == 'on' }}"
+      notify: Restart caddy after toggle
+
+    - name: "CADDY: Flush handler pour redémarrer maintenant"
+      ansible.builtin.meta: flush_handlers
+
+    - name: "CADDY: Attendre que Caddy soit healthy"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            if docker exec caddy caddy version > /dev/null 2>&1; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "timeout"
+          exit 1
+      changed_when: false
+
+    # --- ANNULER DEAD MAN SWITCH ---
+    - name: "SÉCURITÉ: Annuler le dead man switch (toggle réussi)"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          JOB_ID=$(echo "{{ _dms_output.stdout_lines | last }}" | grep -oP '^\d+$' || true)
+          if [[ -n "$JOB_ID" ]]; then
+            atrm "$JOB_ID" 2>/dev/null || true
+            echo "removed job $JOB_ID"
+          else
+            echo "no job id found, skipping"
+          fi
+      changed_when: true
+
+  handlers:
+    - name: Restart caddy after toggle
+      community.docker.docker_compose_v2:
+        project_src: "{{ caddy_data_path }}"
+        state: restarted
+        services:
+          - caddy
+
+# ============================================================
+# PLAY 4 : Post-flight + Summary
+# ============================================================
+- name: "VPN Toggle — Post-flight et résumé"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "POST-FLIGHT: SSH toujours accessible"
+      ansible.builtin.ping:
+
+    - name: "POST-FLIGHT: État UFW"
+      ansible.builtin.command:
+        cmd: ufw status verbose
+      changed_when: false
+      register: _ufw_post
+
+    - name: "POST-FLIGHT: Afficher UFW"
+      ansible.builtin.debug:
+        msg: "{{ _ufw_post.stdout_lines }}"
+
+    - name: "POST-FLIGHT: Conteneurs Docker"
+      ansible.builtin.command:
+        cmd: docker ps --format "{{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+      changed_when: false
+      register: _docker_post
+
+    - name: "POST-FLIGHT: Afficher conteneurs"
+      ansible.builtin.debug:
+        msg: "{{ _docker_post.stdout_lines }}"
+
+    - name: "Résumé du toggle VPN"
+      ansible.builtin.debug:
+        msg:
+          - "══════════════════════════════════════════"
+          - "  VPN TOGGLE TERMINÉ"
+          - "══════════════════════════════════════════"
+          - "  Mode      : {{ 'VPN-ONLY' if vpn_mode == 'on' else 'PUBLIC' }}"
+          - "  Port 80   : {{ 'Ouvert (ACME only)' if vpn_mode == 'on' else 'Ouvert' }}"
+          - "  Port 443  : {{ 'CIDR VPN uniquement' if vpn_mode == 'on' else 'Ouvert à tous' }}"
+          - "  Headscale : Public (toujours)"
+          - "  Uptime K. : Public (toujours)"
+          - "  Dead man  : Annulé (toggle réussi)"
+          - "══════════════════════════════════════════"

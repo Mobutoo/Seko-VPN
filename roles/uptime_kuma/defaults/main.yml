@@ -9,4 +9,4 @@ domain_portainer: "portainer.example.com"
 domain_zerobyte: "backup.example.com"
 domain_uptime_kuma: "status.example.com"
 server_ip: "127.0.0.1"
-ssh_custom_port: 22
+ssh_custom_port: 804

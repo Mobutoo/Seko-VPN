@@ -67,7 +67,7 @@ collect_info() {
         var="SUB_${svc}"; info "  ${svc,,} : ${!var}.${DOMAIN}"; done
 
     header "Configuration réseau et email"
-    ACME_EMAIL=$(ask "Email ACME (Let's Encrypt)" "admin@${DOMAIN}"); SSH_PORT=$(ask "Port SSH custom" "2222")
+    ACME_EMAIL=$(ask "Email ACME (Let's Encrypt)" "admin@${DOMAIN}"); SSH_PORT=$(ask "Port SSH custom" "804")
 
     header "Configuration Telegram"
     info "Créez un bot via @BotFather sur Telegram pour obtenir le token."
@@ -168,7 +168,7 @@ all:
     vps:
       ansible_host: ${SERVER_IP}
       ansible_user: ${SYSTEM_USER}
-      ansible_port: 22
+      ansible_port: "{{ ansible_port_override | default(ssh_custom_port) | default(804) }}"
 EOF
     success "hosts.yml généré"
 

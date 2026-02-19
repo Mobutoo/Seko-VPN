@@ -1,9 +1,16 @@
+---
 # docker-compose.yml Caddy — Géré par Ansible
 services:
   caddy:
-    image: caddy:latest
+    image: "caddy:{{ caddy_version | default('latest') }}"
     container_name: caddy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     ports:
       - "80:80"
       - "443:443"
@@ -12,6 +19,7 @@ services:
       - ./conf:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
+      - "{{ caddy_data_path }}/files/restricted-zone.html:/srv/restricted-zone.html:ro"
     networks:
       - proxy-net
 

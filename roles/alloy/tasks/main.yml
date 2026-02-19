@@ -13,6 +13,7 @@
       set -o pipefail
       curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/grafana.gpg
     creates: /usr/share/keyrings/grafana.gpg
+  changed_when: false
 
 - name: Ajouter le dépôt Grafana
   ansible.builtin.copy:
@@ -29,10 +30,20 @@
     name: alloy
     state: present
 
+- name: Ajouter alloy au groupe docker pour la collecte des logs
+  ansible.builtin.user:
+    name: alloy
+    groups: docker
+    append: true
+  notify: Restart alloy
+  when: alloy_collect_docker | default(true) | bool
+
 - name: Créer le répertoire de logs Alloy
   ansible.builtin.file:
     path: /var/log/alloy
     state: directory
+    owner: alloy
+    group: alloy
     mode: "0755"
 
 - name: Déployer la configuration Alloy

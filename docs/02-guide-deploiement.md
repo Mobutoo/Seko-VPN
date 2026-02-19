@@ -85,7 +85,7 @@ Le wizard est un script interactif qui te pose 10 questions et génère automati
 | 4 | Nom de domaine principal | `mondomaine.fr` | (obligatoire) |
 | 5-10 | Sous-domaines (6 services) | `hs`, `nga`, `vault`... | Valeurs par défaut intelligentes |
 | 11 | Email ACME (Let's Encrypt) | `admin@mondomaine.fr` | `admin@<domaine>` |
-| 12 | Port SSH custom | `2222` | `2222` |
+| 12 | Port SSH custom | `804` | `804` |
 | 13 | Token bot Telegram | (secret) | (obligatoire) |
 | 14 | Chat ID Telegram | `123456789` | (obligatoire) |
 | 15 | Username admin Uptime Kuma | `admin` | `admin` |
@@ -290,7 +290,7 @@ ansible-playbook playbooks/harden-ssh.yml --ask-vault-pass
 | Action | Avant | Après |
 |--------|-------|-------|
 | Connexion root | ✅ Autorisée | ❌ Désactivée |
-| Port SSH | 22 | 2222 (ou le port custom) |
+| Port SSH | 22 | 804 (ou le port custom) |
 | Auth par mot de passe | ✅ Autorisée | ❌ Désactivée (clé SSH uniquement) |
 
 ### Après le hardening SSH
@@ -302,13 +302,13 @@ La connexion SSH change :
 ssh srvadmin@203.0.113.10
 
 # Après
-ssh -p 2222 srvadmin@203.0.113.10
+ssh -p 804 srvadmin@203.0.113.10
 ```
 
 > **⚠️ ATTENTION :** Mets à jour `inventory/hosts.yml` avec le nouveau port SSH :
 >
 > ```yaml
-> ansible_port: 2222  # Ancien : 22
+> ansible_port: 804  # Ancien : 22
 > ```
 
 ### Tu es maintenant en production ! ✅

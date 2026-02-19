@@ -63,7 +63,7 @@ roles/<nom>/
 
 | Variable | Défaut | Description |
 |----------|--------|-------------|
-| `ssh_custom_port` | `2222` | Port SSH personnalisé |
+| `ssh_custom_port` | `804` | Port SSH personnalisé |
 
 **Tâches principales :** activation UFW, règles allow (SSH, HTTP, HTTPS, WireGuard), installation Fail2Ban, configuration sysctl (`net.ipv4.ip_forward`, `net.ipv4.conf.all.rp_filter`, etc.).
 

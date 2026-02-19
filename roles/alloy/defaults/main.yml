@@ -1,2 +1,5 @@
 ---
 alloy_loki_url: ""
+alloy_collect_docker: true
+alloy_docker_socket_path: "/var/run/docker.sock"
+alloy_hostname: "{{ telegram_bot_server_name | default('seko-vpn') }}"

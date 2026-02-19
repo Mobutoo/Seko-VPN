@@ -8,5 +8,5 @@ domain_vaultwarden: "vault.example.com"
 domain_portainer: "portainer.example.com"
 domain_zerobyte: "backup.example.com"
 domain_uptime_kuma: "status.example.com"
-ssh_custom_port: 22
+ssh_custom_port: 804
 uptime_kuma_admin_username: "admin"

@@ -1,15 +1,37 @@
 // config.alloy — Géré par Ansible
 // Collecteur de logs/métriques Grafana Alloy
 
-// --- Source : logs Docker ---
-local.file_match "docker_logs" {
+{% if alloy_collect_docker | default(true) | bool %}
+// --- Source : logs Docker natifs via socket ---
+discovery.docker "containers" {
+    host = "unix://{{ alloy_docker_socket_path }}"
+}
+
+discovery.relabel "docker_logs" {
+    targets = discovery.docker.containers.targets
+    rule {
+        source_labels = ["__meta_docker_container_name"]
+        regex         = "/(.*)"
+        target_label  = "container"
+    }
+}
+
+loki.source.docker "containers" {
+    host       = "unix://{{ alloy_docker_socket_path }}"
+    targets    = discovery.relabel.docker_logs.output
+    forward_to = [loki.process.default.receiver]
+}
+{% endif %}
+
+// --- Source : logs fichiers ---
+local.file_match "system_logs" {
     path_targets = [
         {__path__ = "/var/log/*.log"},
     ]
 }
 
-loki.source.file "docker" {
-    targets    = local.file_match.docker_logs.targets
+loki.source.file "system" {
+    targets    = local.file_match.system_logs.targets
     forward_to = [loki.process.default.receiver]
 }
 
@@ -25,7 +47,7 @@ loki.source.journal "systemd" {
 loki.process "default" {
     stage.static_labels {
         values = {
-            hostname = env("HOSTNAME"),
+            hostname = "{{ alloy_hostname | default('seko-vpn') }}",
         }
     }
 {% if alloy_loki_url | default('') | length > 0 %}
@@ -46,10 +68,6 @@ loki.write "default" {
 }
 {% else %}
 // --- Loki désactivé ---
-// Décommentez et configurez alloy_loki_url pour activer :
-// loki.write "default" {
-//     endpoint {
-//         url = "http://loki.example.com:3100/loki/api/v1/push"
-//     }
-// }
+// À activer après exposition de Loki via VPN sur VPAI :
+// alloy_loki_url: "http://<vpai_tailscale_ip>:3100/loki/api/v1/push"
 {% endif %}

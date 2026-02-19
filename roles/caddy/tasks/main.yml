@@ -7,11 +7,19 @@
   loop:
     - "{{ caddy_data_path }}"
     - "{{ caddy_data_path }}/conf"
+    - "{{ caddy_data_path }}/files"
 
 - name: Déployer le Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2
     dest: "{{ caddy_data_path }}/conf/Caddyfile"
+    mode: "0644"
+  notify: Restart caddy
+
+- name: Copier la page 403 VPN-only
+  ansible.builtin.copy:
+    src: restricted-zone.html
+    dest: "{{ caddy_data_path }}/files/restricted-zone.html"
     mode: "0644"
   notify: Restart caddy
 

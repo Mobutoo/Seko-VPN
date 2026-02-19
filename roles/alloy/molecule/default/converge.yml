@@ -4,5 +4,6 @@
   become: true
   vars:
     alloy_loki_url: ""
+    alloy_collect_docker: false
   roles:
     - role: alloy

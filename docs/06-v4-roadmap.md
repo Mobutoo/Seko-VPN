@@ -171,7 +171,7 @@ Audit de sécurité réalisé post-V3.1. Le serveur est fonctionnel mais présen
 | 4 | **Rate limiting Caddy** | Faible | 1h | Limiter les requêtes par IP sur les vhosts sensibles (login pages). Complète Fail2Ban |
 | 5 | **ACL Headscale granulaires** | Moyen | 2h | Remplacer la policy `allow-all` par des groups/roles. Contrôler qui peut communiquer avec qui dans le VPN |
 | 6 | **Docker socket proxy** | Moyen | 2h | Remplacer le bind mount `/var/run/docker.sock` par un proxy Tecnativa en read-only. Protège Portainer et Alloy |
-| 7 | **Segmentation réseau Docker** | Moyen | 3h | Diviser `proxy-net` en 3 réseaux : `frontend` (Caddy ↔ services), `backend` (services ↔ DB), `monitoring` (Monit, Alloy). Isolation latérale entre conteneurs |
+| 7 | **Segmentation réseau Docker** | Moyen | 2h | Ajouter un réseau `mgmt-net` dédié à Portainer + socket-proxy (Tecnativa). Conditionnel à l'axe 6 (socket proxy). Seko-VPN n'a pas de DB partagée : un seul réseau `proxy-net` suffit pour les 7 services applicatifs |
 | 8 | **SSH via VPN uniquement** | Élevé | 1h | Restreindre UFW pour n'autoriser SSH que depuis le subnet VPN (100.64.0.0/10). **Pré-requis** : VPN multi-serveur validé + porte de secours IPMI/KVM |
 | 9 | **AppArmor profiles** | Optionnel | 4h+ | Profils AppArmor custom par conteneur. Complexe, bénéfice marginal si les autres axes sont en place |
 
@@ -191,7 +191,7 @@ Phase 5 (optionnel)             : axe 9
 - `roles/security/tasks/main.yml` — Fail2Ban jails, UFW VPN-only
 - `roles/caddy/templates/Caddyfile.j2` — rate limiting
 - `roles/headscale/templates/policy.json.j2` — ACL granulaires
-- `roles/docker/tasks/main.yml` — création des 3 réseaux, socket proxy
+- `roles/docker/tasks/main.yml` — création du réseau `mgmt-net`, socket proxy
 
 ---
 

@@ -7,10 +7,38 @@
 {% else %}
 {
     email {{ acme_email }}
+    servers {
+        trusted_proxies static private_ranges
+    }
 }
 {% endif %}
 
-# --- Headscale (VPN WireGuard) ---
+# === Snippets VPN-only mode ===
+{% if caddy_vpn_enforce | default(false) | bool %}
+(vpn_only) {
+    # Deux CIDRs autorisés :
+    #   - caddy_vpn_cidr : IP Tailscale/Headscale directes (TCP/HTTP2)
+    #   - caddy_docker_subnet : gateway Docker bridge (HTTP/3 QUIC via DNAT — REX-34)
+    @blocked not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_subnet }}
+    error @blocked 403
+}
+
+(vpn_error_page) {
+    handle_errors {
+        root * /srv
+        rewrite * /restricted-zone.html
+        file_server
+    }
+}
+{% else %}
+# VPN enforcement DISABLED (caddy_vpn_enforce=false)
+(vpn_only) {
+}
+(vpn_error_page) {
+}
+{% endif %}
+
+# === Headscale (VPN WireGuard) — TOUJOURS PUBLIC (API clients VPN) ===
 {{ domain_headscale }} {
     reverse_proxy headscale:8080
     header {
@@ -21,8 +49,11 @@
     }
 }
 
-# --- Headplane (UI VPN - distroless) ---
+# === Headplane (UI VPN) — VPN-only ===
 {{ domain_headplane }} {
+    import vpn_only
+    import vpn_error_page
+
     redir / /admin permanent
     reverse_proxy headplane:3000
     header {
@@ -33,8 +64,11 @@
     }
 }
 
-# --- Vaultwarden (Mots de passe) ---
+# === Vaultwarden (Mots de passe) — VPN-only ===
 {{ domain_vaultwarden }} {
+    import vpn_only
+    import vpn_error_page
+
     reverse_proxy vaultwarden:80
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -44,8 +78,11 @@
     }
 }
 
-# --- Portainer (UI Docker) ---
+# === Portainer (UI Docker) — VPN-only ===
 {{ domain_portainer }} {
+    import vpn_only
+    import vpn_error_page
+
     reverse_proxy portainer:9000
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -55,8 +92,11 @@
     }
 }
 
-# --- Zerobyte (Sauvegardes) ---
+# === Zerobyte (Sauvegardes) — VPN-only ===
 {{ domain_zerobyte }} {
+    import vpn_only
+    import vpn_error_page
+
     reverse_proxy zerobyte:4096
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -66,7 +106,7 @@
     }
 }
 
-# --- Uptime Kuma (Monitoring HTTP) ---
+# === Uptime Kuma (Monitoring HTTP) — TOUJOURS PUBLIC (dépannage incidents) ===
 {{ domain_uptime_kuma }} {
     reverse_proxy uptime-kuma:3001
     header {

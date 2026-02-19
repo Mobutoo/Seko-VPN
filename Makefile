@@ -14,7 +14,11 @@ ANSIBLE_GALAXY := $(ROOT_DIR)/$(VENV)/bin/ansible-galaxy
 # Liste des 14 rôles dans l'ordre d'exécution
 ROLES := common security docker hardening caddy headscale headplane vaultwarden portainer zerobyte uptime_kuma monit alloy telegram_bot
 
-.PHONY: help venv lint molecule role clean wizard wsl-repair
+.PHONY: help venv lint molecule role clean wizard wsl-repair deploy deploy-check vpn-on vpn-off vpn-status
+
+# Optionnel : passer des extra-vars Ansible (ex: make deploy EXTRA_VARS="ansible_port_override=22")
+ANSIBLE_PLAYBOOK := $(ROOT_DIR)/$(VENV)/bin/ansible-playbook
+EXTRA_VARS ?=
 
 help: ## Affiche cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -57,4 +61,20 @@ wizard: ## Lancer le wizard de configuration interactif
 	./scripts/wizard.sh
 
 wsl-repair: ## Corriger DNS/systemd WSL2
-	$(ROOT_DIR)/$(VENV)/bin/ansible-playbook playbooks/wsl-repair.yml --connection local
+	$(ANSIBLE_PLAYBOOK) playbooks/wsl-repair.yml --connection local
+
+deploy: ## Déploiement complet (usage: make deploy EXTRA_VARS="ansible_port_override=22")
+	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --ask-vault-pass $(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")
+
+deploy-check: ## Dry run du déploiement complet
+	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --ask-vault-pass --check --diff $(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")
+
+vpn-on: ## Basculer en mode VPN-only
+	$(ANSIBLE_PLAYBOOK) playbooks/vpn-toggle.yml --ask-vault-pass -e "vpn_mode=on" $(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")
+
+vpn-off: ## Retour en mode public
+	$(ANSIBLE_PLAYBOOK) playbooks/vpn-toggle.yml --ask-vault-pass -e "vpn_mode=off" $(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")
+
+vpn-status: ## Afficher l'état VPN-only actuel
+	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --ask-vault-pass --tags caddy --check 2>/dev/null | grep -E 'caddy_vpn_enforce|changed|ok' || true
+	@$(ROOT_DIR)/$(VENV)/bin/ansible -i inventory/hosts.yml all -m command -a "ufw status verbose" --ask-vault-pass 2>/dev/null
