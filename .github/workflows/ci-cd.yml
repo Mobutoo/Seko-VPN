@@ -325,7 +325,6 @@ jobs:
           ansible-playbook playbooks/site.yml \
             --vault-password-file /tmp/.vault-pass \
             --private-key ~/.ssh/seko-vpn-deploy \
-            -e "ansible_port=804" \
             --diff
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -335,8 +334,7 @@ jobs:
         run: |
           ansible-playbook playbooks/verify.yml \
             --vault-password-file /tmp/.vault-pass \
-            --private-key ~/.ssh/seko-vpn-deploy \
-            -e "ansible_port=804"
+            --private-key ~/.ssh/seko-vpn-deploy
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
           ANSIBLE_FORCE_COLOR: "true"
