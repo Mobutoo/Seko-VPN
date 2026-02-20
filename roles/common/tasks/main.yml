@@ -71,6 +71,7 @@
       - vim
       - net-tools
       - lsb-release
+      - at
     state: present
 
 - name: Configurer la locale fr_FR.UTF-8
@@ -105,7 +106,7 @@
     groups: sudo
     append: true
     create_home: true
-    password: "{{ vault_system_user_password | password_hash('sha512', 'sekoSaltV3abcd') }}"
+    password: "{{ vault_system_user_password | password_hash('sha512') }}"
 
 - name: Configurer sudo sans mot de passe
   ansible.builtin.copy:
