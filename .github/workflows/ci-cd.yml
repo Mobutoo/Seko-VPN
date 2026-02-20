@@ -232,7 +232,7 @@ jobs:
           ---
           vault_system_user_password: "$(openssl rand -base64 24)"
           vault_vaultwarden_admin_token: "$(openssl rand -base64 32)"
-          vault_headplane_cookie_secret: "$(openssl rand -base64 24 | head -c 32)"
+          vault_headplane_cookie_secret: "$(openssl rand -base64 24 | tr -d '\n' | head -c 32)"
           vault_zerobyte_app_secret: "$(openssl rand -hex 32)"
           vault_telegram_bot_token: "0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
           vault_telegram_chat_id: "000000000"
@@ -325,6 +325,7 @@ jobs:
           ansible-playbook playbooks/site.yml \
             --vault-password-file /tmp/.vault-pass \
             --private-key ~/.ssh/seko-vpn-deploy \
+            -e "ansible_port=804" \
             --diff
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -334,7 +335,8 @@ jobs:
         run: |
           ansible-playbook playbooks/verify.yml \
             --vault-password-file /tmp/.vault-pass \
-            --private-key ~/.ssh/seko-vpn-deploy
+            --private-key ~/.ssh/seko-vpn-deploy \
+            -e "ansible_port=804"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
           ANSIBLE_FORCE_COLOR: "true"
