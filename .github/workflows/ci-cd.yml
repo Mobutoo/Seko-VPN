@@ -325,6 +325,7 @@ jobs:
           ansible-playbook playbooks/site.yml \
             --vault-password-file /tmp/.vault-pass \
             --private-key ~/.ssh/seko-vpn-deploy \
+            -e "ci_mode=false" \
             --diff
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -334,7 +335,8 @@ jobs:
         run: |
           ansible-playbook playbooks/verify.yml \
             --vault-password-file /tmp/.vault-pass \
-            --private-key ~/.ssh/seko-vpn-deploy
+            --private-key ~/.ssh/seko-vpn-deploy \
+            -e "ci_mode=false"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
           ANSIBLE_FORCE_COLOR: "true"
