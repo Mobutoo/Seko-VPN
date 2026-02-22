@@ -58,6 +58,16 @@ dns:
     - name: "{{ domain_uptime_kuma }}"
       type: A
       value: "{{ server_tailscale_ip | default('87.106.30.160') }}"
+    # Pi workstation — TLS terminé par Caddy Seko-VPN, proxy vers Pi via Tailscale
+    - name: "{{ domain_comfyui | default('studio.example.com') }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('87.106.30.160') }}"
+    - name: "{{ domain_remotion | default('cut.example.com') }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('87.106.30.160') }}"
+    - name: "{{ domain_opencode | default('oc.example.com') }}"
+      type: A
+      value: "{{ server_tailscale_ip | default('87.106.30.160') }}"
 {% if nodes_extra_records is defined and nodes_extra_records | length > 0 %}
 {% for node in nodes_extra_records %}
 {% for domain in node.domains %}

@@ -1,4 +1,4 @@
-# Caddyfile — Géré par Ansible (6 vhosts)
+# Caddyfile — Géré par Ansible (9 vhosts)
 {% if ci_mode | default(false) %}
 {
     local_certs
@@ -109,6 +109,68 @@
 # === Uptime Kuma (Monitoring HTTP) — TOUJOURS PUBLIC (dépannage incidents) ===
 {{ domain_uptime_kuma }} {
     reverse_proxy uptime-kuma:3001
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
+# === Pi Workstation — Proxy via Tailscale mesh (100.64.0.1) ===
+# REX: DNS studio/cut/oc.ewutelo.cloud → Seko-VPN (87.106.30.160)
+#      Caddy TLS termine ici, puis proxy HTTP vers le Pi via Tailscale
+#      VPN-only : Tailscale IPs uniquement (caddy_vpn_enforce=true recommandé)
+
+# ComfyUI (génération d'images AI)
+{{ domain_comfyui }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy {{ pi_tailscale_ip }}:8188 {
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 120s
+        }
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
+# Remotion (rendu vidéo)
+{{ domain_remotion }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy {{ pi_tailscale_ip }}:3200 {
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 300s
+        }
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
+# OpenCode (IDE AI)
+{{ domain_opencode }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy {{ pi_tailscale_ip }}:3456 {
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 60s
+        }
+    }
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"

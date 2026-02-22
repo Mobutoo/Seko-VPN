@@ -46,6 +46,12 @@ hardening_journal_max_use: "500M"
 hardening_journal_max_retention: "30day"
 # Extra records DNS pour les autres noeuds du réseau Tailscale
 # Chaque noeud expose ses domaines via son IP Tailscale (résolution VPN-aware)
+# Tailscale IP du Pi workstation (waza)
+pi_tailscale_ip: "100.64.0.1"
+# Sous-domaines Pi (proxy via Seko-VPN Caddy → Pi Tailscale)
+domain_comfyui: "studio.ewutelo.cloud"
+domain_remotion: "cut.ewutelo.cloud"
+domain_opencode: "oc.ewutelo.cloud"
 nodes_extra_records:
   - name: "sese"
     tailscale_ip: "100.64.0.14"
