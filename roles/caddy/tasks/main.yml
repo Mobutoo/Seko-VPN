@@ -9,9 +9,9 @@
     - "{{ caddy_data_path }}/conf"
     - "{{ caddy_data_path }}/files"
 
-- name: Déployer le Caddyfile
+- name: Déployer le Caddyfile -- {{ caddy_caddyfile_template | default('Caddyfile.j2') }}
   ansible.builtin.template:
-    src: Caddyfile.j2
+    src: "{{ caddy_caddyfile_template | default('Caddyfile.j2') }}"
     dest: "{{ caddy_data_path }}/conf/Caddyfile"
     mode: "0644"
   notify: Restart caddy

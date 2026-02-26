@@ -80,6 +80,16 @@ MONITORS = [
         "interval": 300,
         "maxretries": 3,
     },
+{% if couchdb_domain is defined %}
+    {
+        "name": "CouchDB LiveSync (sese)",
+        "type": MonitorType.HTTP,
+        "url": "https://{{ couchdb_domain }}/_up",
+        "interval": 60,
+        "maxretries": 3,
+        "accepted_statuscodes": ["200-299"],
+    },
+{% endif %}
 ]
 
 # --- Notification Telegram ---

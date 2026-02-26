@@ -1,0 +1,24 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    ci_mode: true
+    couchdb_version: "3.3.3"
+    couchdb_data_path: "/opt/services/couchdb"
+    couchdb_domain: "koma.ewutelo.cloud"
+    couchdb_uid: 5984
+    couchdb_memory_limit: "512M"
+    couchdb_memory_reservation: "128M"
+    vault_couchdb_user: "obsidian"
+    vault_couchdb_password: "test_password_molecule_32chars_ok"
+    vault_couchdb_obsidian_user: "obsidian_livesync"
+    vault_couchdb_obsidian_password: "test_obsidian_livesync_passw0rd32"
+    couchdb_obsidian_db: "obsidian-sync"
+  pre_tasks:
+    - name: Créer le réseau proxy-net pour Molecule
+      community.docker.docker_network:
+        name: proxy-net
+        state: present
+  roles:
+    - role: couchdb

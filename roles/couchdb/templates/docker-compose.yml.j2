@@ -1,0 +1,26 @@
+# docker-compose.yml CouchDB — Géré par Ansible
+---
+services:
+  couchdb:
+    image: "couchdb:{{ couchdb_version }}"
+    container_name: couchdb
+    restart: unless-stopped
+    environment:
+      COUCHDB_USER: "{{ vault_couchdb_user }}"
+      COUCHDB_PASSWORD: "{{ vault_couchdb_password }}"
+    volumes:
+      - "{{ couchdb_data_path }}/data:/opt/couchdb/data"
+      - "{{ couchdb_data_path }}/etc:/opt/couchdb/etc/local.d"
+    networks:
+      - caddy-net
+    deploy:
+      resources:
+        limits:
+          memory: "{{ couchdb_memory_limit }}"
+        reservations:
+          memory: "{{ couchdb_memory_reservation }}"
+
+networks:
+  caddy-net:
+    name: "{{ caddy_docker_network | default('proxy-net') }}"
+    external: true
