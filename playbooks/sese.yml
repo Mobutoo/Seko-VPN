@@ -13,6 +13,9 @@
 - name: Déploiement CouchDB LiveSync sur sese
   hosts: sese
   become: true
+  vars_files:
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../inventory/group_vars/all/vault.yml"
 
   pre_tasks:
     - name: Vérifier que les variables obligatoires sese sont définies
