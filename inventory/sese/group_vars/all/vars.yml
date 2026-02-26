@@ -1,0 +1,27 @@
+---
+# vars.yml sese — Variables publiques pour le déploiement CouchDB LiveSync
+# Serveur : sese (Javisi) — 137.74.114.167 — IP Tailscale : 100.64.0.14
+
+sese_system_user: "mobuone"
+
+# Domaine public CouchDB LiveSync (A record : 137.74.114.167)
+couchdb_domain: "koma.ewutelo.cloud"
+
+# Email ACME Let's Encrypt (identique IONOS)
+acme_email: "seko.mobutoo@gmail.com"
+
+# CouchDB
+couchdb_version: "3.3.3"
+couchdb_data_path: "/opt/services/couchdb"
+couchdb_uid: 5984
+couchdb_memory_limit: "512M"
+couchdb_memory_reservation: "128M"
+
+# Caddy javisi (reverse proxy existant sur sese — NE PAS redéployer)
+caddy_container_name: "javisi_caddy"
+caddy_caddyfile_path: "/opt/javisi/configs/caddy/Caddyfile"
+caddy_docker_network: "javisi_backend"
+ci_mode: false
+
+# Chemin de base services
+base_deploy_path: "/opt/services"

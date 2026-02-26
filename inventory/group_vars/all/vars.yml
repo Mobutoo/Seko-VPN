@@ -52,6 +52,8 @@ pi_tailscale_ip: "100.64.0.1"
 domain_comfyui: "studio.ewutelo.cloud"
 domain_remotion: "cut.ewutelo.cloud"
 domain_opencode: "oc.ewutelo.cloud"
+# Domaines sese exposés publiquement (monitor Uptime Kuma IONOS)
+couchdb_domain: "koma.ewutelo.cloud"
 nodes_extra_records:
   - name: "sese"
     tailscale_ip: "100.64.0.14"
@@ -61,3 +63,4 @@ nodes_extra_records:
       - "mayi.ewutelo.cloud"
       - "llm.ewutelo.cloud"
       - "qd.ewutelo.cloud"
+      - "koma.ewutelo.cloud"

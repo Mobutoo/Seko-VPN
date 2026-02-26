@@ -1,0 +1,7 @@
+---
+couchdb_version: "3.3.3"
+couchdb_data_path: "/opt/services/couchdb"
+couchdb_domain: "koma.ewutelo.cloud"
+couchdb_uid: 5984
+couchdb_memory_limit: "512M"
+couchdb_memory_reservation: "128M"

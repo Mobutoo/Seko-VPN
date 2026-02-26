@@ -1,0 +1,6 @@
+---
+- name: Restart couchdb
+  community.docker.docker_compose_v2:
+    project_src: "{{ couchdb_data_path }}"
+    state: present
+    recreate: always

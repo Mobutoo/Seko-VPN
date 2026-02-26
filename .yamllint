@@ -6,6 +6,7 @@ extends: default
 
 ignore:
   - inventory/group_vars/all/vault.yml
+  - inventory/sese/group_vars/all/vault.yml
   - .venv/
   - .molecule/
 

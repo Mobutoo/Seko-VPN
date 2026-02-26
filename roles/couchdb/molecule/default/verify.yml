@@ -1,0 +1,40 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Vérifier que le conteneur CouchDB est en cours d'exécution
+      ansible.builtin.command:
+        cmd: docker inspect couchdb --format "{{ '{{' }}.State.Running{{ '}}' }}"
+      register: couchdb_check
+      changed_when: false
+
+    - name: Valider le conteneur CouchDB
+      ansible.builtin.assert:
+        that:
+          - "'true' in couchdb_check.stdout"
+
+    - name: Vérifier les répertoires CouchDB
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: couchdb_dirs
+      loop:
+        - /opt/services/couchdb
+        - /opt/services/couchdb/data
+        - /opt/services/couchdb/etc
+
+    - name: Valider les répertoires CouchDB
+      ansible.builtin.assert:
+        that:
+          - item.stat.isdir
+      loop: "{{ couchdb_dirs.results }}"
+
+    - name: Vérifier la présence du local.ini
+      ansible.builtin.stat:
+        path: /opt/services/couchdb/etc/local.ini
+      register: couchdb_ini
+
+    - name: Valider le local.ini
+      ansible.builtin.assert:
+        that:
+          - couchdb_ini.stat.exists

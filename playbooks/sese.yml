@@ -1,0 +1,69 @@
+---
+# ============================================================
+# sese.yml — Déploiement CouchDB (Obsidian LiveSync) sur sese
+# ============================================================
+# Serveur : sese (Javisi) — 137.74.114.167 — IP Tailscale : 100.64.0.14
+# Caddy existant : javisi_caddy (réseau javisi_backend)
+# Caddyfile existant : /opt/javisi/configs/caddy/Caddyfile
+#
+# Usage :
+#   ansible-playbook playbooks/sese.yml -i inventory/sese/hosts.yml --ask-vault-pass
+#   ansible-playbook playbooks/sese.yml -i inventory/sese/hosts.yml --tags couchdb --ask-vault-pass
+# ============================================================
+- name: Déploiement CouchDB LiveSync sur sese
+  hosts: sese
+  become: true
+
+  pre_tasks:
+    - name: Vérifier que les variables obligatoires sese sont définies
+      ansible.builtin.assert:
+        that:
+          - couchdb_domain is defined
+          - vault_couchdb_user is defined
+          - vault_couchdb_password is defined
+        fail_msg: >
+          Des variables obligatoires sese ne sont pas définies.
+          Vérifiez inventory/sese/group_vars/all/vars.yml et vault.yml.
+      tags: [always]
+
+  roles:
+    - role: couchdb
+      tags: [couchdb]
+
+  post_tasks:
+    - name: Ajouter le vhost koma.ewutelo.cloud au Caddyfile javisi
+      ansible.builtin.blockinfile:
+        path: "{{ caddy_caddyfile_path }}"
+        marker: "# {mark} koma.ewutelo.cloud (CouchDB LiveSync — Ansible)"
+        block: |
+          {{ couchdb_domain }} {
+              reverse_proxy couchdb:5984
+
+              log {
+                  output file /var/log/caddy/{{ couchdb_domain }}.log {
+                      roll_size 10mb
+                      roll_keep 5
+                  }
+              }
+          }
+        create: false
+      notify: Reload javisi caddy
+      tags: [caddy, couchdb]
+
+    - name: Afficher le résumé du déploiement sese
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════"
+          - "  Déploiement sese (CouchDB LiveSync) terminé !"
+          - "═══════════════════════════════════════════════════"
+          - "  CouchDB LiveSync : https://{{ couchdb_domain }}"
+          - "  Fauxton (debug)  : https://{{ couchdb_domain }}/_utils"
+          - "  Health check     : https://{{ couchdb_domain }}/_up"
+          - "═══════════════════════════════════════════════════"
+      tags: [always]
+
+  handlers:
+    - name: Reload javisi caddy
+      community.docker.docker_container_exec:
+        container: "{{ caddy_container_name }}"
+        command: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile

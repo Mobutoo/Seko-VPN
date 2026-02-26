@@ -1,0 +1,61 @@
+---
+- name: Créer les répertoires CouchDB avec les bonnes permissions -- UID 5984
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ couchdb_uid }}"
+    group: "{{ couchdb_uid }}"
+    mode: "0750"
+  loop:
+    - "{{ couchdb_data_path }}"
+    - "{{ couchdb_data_path }}/data"
+    - "{{ couchdb_data_path }}/etc"
+
+- name: Déployer la configuration CouchDB local.ini -- {{ couchdb_domain }}
+  ansible.builtin.template:
+    src: couchdb-local.ini.j2
+    dest: "{{ couchdb_data_path }}/etc/local.ini"
+    owner: "{{ couchdb_uid }}"
+    group: "{{ couchdb_uid }}"
+    mode: "0640"
+  notify: Restart couchdb
+
+- name: Déployer le docker-compose CouchDB
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ couchdb_data_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Démarrer CouchDB
+  community.docker.docker_compose_v2:
+    project_src: "{{ couchdb_data_path }}"
+    state: present
+
+- name: Attendre que CouchDB soit opérationnel (health-check authentifié)
+  ansible.builtin.command:
+    cmd: >
+      docker exec couchdb
+      curl -sf -u "{{ vault_couchdb_user }}:{{ vault_couchdb_password }}"
+      http://localhost:5984/
+  register: _couchdb_health
+  retries: 15
+  delay: 2
+  until: _couchdb_health.rc == 0
+  changed_when: false
+  when: not (ci_mode | default(false) | bool)
+
+- name: Initialiser les bases système CouchDB via docker exec
+  ansible.builtin.command:
+    cmd: >
+      docker exec couchdb
+      curl -sf -o /dev/null -w "%{http_code}"
+      -X PUT http://localhost:5984/{{ item }}
+      -u "{{ vault_couchdb_user }}:{{ vault_couchdb_password }}"
+  register: _couchdb_init
+  changed_when: _couchdb_init.stdout == "201"
+  failed_when: _couchdb_init.stdout not in ["201", "412"]
+  loop:
+    - _users
+    - _replicator
+    - _global_changes
+  when: not (ci_mode | default(false) | bool)

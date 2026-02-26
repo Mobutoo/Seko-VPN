@@ -1,0 +1,27 @@
+# Caddyfile sese — Géré par Ansible (vhost CouchDB LiveSync)
+{% if ci_mode | default(false) %}
+{
+    local_certs
+    skip_install_trust
+}
+{% else %}
+{
+    email {{ acme_email }}
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
+{% endif %}
+
+# === CouchDB (Obsidian LiveSync) — PUBLIC (E2E chiffré côté client) ===
+# ⚠️ CORS uniquement dans local.ini CouchDB — pas de doublon headers ici
+{{ couchdb_domain }} {
+    reverse_proxy couchdb:5984
+
+    log {
+        output file /var/log/caddy/{{ couchdb_domain }}.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
