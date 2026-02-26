@@ -5,3 +5,4 @@ couchdb_domain: "koma.ewutelo.cloud"
 couchdb_uid: 5984
 couchdb_memory_limit: "512M"
 couchdb_memory_reservation: "128M"
+couchdb_obsidian_db: "obsidian-sync"

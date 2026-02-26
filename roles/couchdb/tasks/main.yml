@@ -59,3 +59,46 @@
     - _replicator
     - _global_changes
   when: not (ci_mode | default(false) | bool)
+
+- name: Créer le user Obsidian LiveSync dans _users (idempotent)
+  ansible.builtin.command:
+    cmd: >
+      docker exec couchdb
+      curl -sf -o /dev/null -w "%{http_code}"
+      -X PUT
+      -H "Content-Type: application/json"
+      -u "{{ vault_couchdb_user }}:{{ vault_couchdb_password }}"
+      -d "{\"type\":\"user\",\"name\":\"{{ vault_couchdb_obsidian_user }}\",\"password\":\"{{ vault_couchdb_obsidian_password }}\",\"roles\":[]}"
+      http://localhost:5984/_users/org.couchdb.user:{{ vault_couchdb_obsidian_user }}
+  register: _obsidian_user
+  changed_when: _obsidian_user.stdout == "201"
+  failed_when: _obsidian_user.stdout not in ["201", "409"]
+  when: not (ci_mode | default(false) | bool)
+
+- name: Créer la base obsidian-sync (idempotent)
+  ansible.builtin.command:
+    cmd: >
+      docker exec couchdb
+      curl -sf -o /dev/null -w "%{http_code}"
+      -X PUT
+      -u "{{ vault_couchdb_user }}:{{ vault_couchdb_password }}"
+      http://localhost:5984/{{ couchdb_obsidian_db }}
+  register: _obsidian_db
+  changed_when: _obsidian_db.stdout == "201"
+  failed_when: _obsidian_db.stdout not in ["201", "412"]
+  when: not (ci_mode | default(false) | bool)
+
+- name: Configurer les permissions de obsidian-sync
+  ansible.builtin.command:
+    cmd: >
+      docker exec couchdb
+      curl -sf -o /dev/null -w "%{http_code}"
+      -X PUT
+      -H "Content-Type: application/json"
+      -u "{{ vault_couchdb_user }}:{{ vault_couchdb_password }}"
+      -d "{\"admins\":{\"names\":[],\"roles\":[]},\"members\":{\"names\":[\"{{ vault_couchdb_obsidian_user }}\"],\"roles\":[]}}"
+      http://localhost:5984/{{ couchdb_obsidian_db }}/_security
+  register: _obsidian_security
+  changed_when: false
+  failed_when: _obsidian_security.stdout not in ["200"]
+  when: not (ci_mode | default(false) | bool)
