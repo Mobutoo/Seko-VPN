@@ -1,2 +1,11 @@
 ---
 ssh_custom_port: 804
+
+# IPs de confiance JAMAIS bannies par Fail2Ban (jail.d/whitelist.local).
+# REX 2026-07-16 : waza banni en boucle par un cron git mal configuré -> SSH « mort » (faux négatif).
+fail2ban_permanent_ignoreip:
+  - 127.0.0.1/8
+  - "::1"
+  - 100.64.0.0/10 # tailnet Headscale
+  - 88.191.156.31 # waza (Free, IP publique quasi statique)
+  - 137.74.114.167 # sese (OVH) — chemin de secours ProxyJump vers Seko

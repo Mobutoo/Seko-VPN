@@ -823,3 +823,25 @@ docker network inspect proxy-net
 | `invalid argument for --user flag` | Headscale 0.26.0 veut un ID numerique | `headscale users list` pour obtenir l'ID |
 | `Skipping monitor configuration` (Uptime Kuma) | Username case-sensitive (`admin` ≠ `Admin`) | Corriger `uptime_kuma_admin_username` dans le vault |
 | Sonde Headscale API DOWN (Uptime Kuma) | Headscale 0.26 renvoie 404 sur `/` | Pointer la sonde vers `/api/v1/apikey` (attend 401) |
+
+## 43. Fail2Ban — « SSH mort » depuis waza (faux négatif) + anti-ban permanent
+
+**Symptôme** : `Connection refused` sur les ports 22 ET 804 depuis waza, mais HTTPS 200 (box UP).
+C'est la signature d'un **ban fail2ban** (REJECT sur les 2 ports de la jail sshd), pas d'une panne.
+
+**Cause REX 2026-07-16** : cron waza `git push` vers `git@seko-vpn:` — le `git@` écrase le
+`User mobuone` du ssh_config → « Invalid user git » ×2 toutes les 5 min → ban 1h en boucle
+(depuis mars, masqué par `2>/dev/null || true`).
+
+**Diagnostic/récupération sans console Ionos** (IP Sese non bannie) :
+```bash
+ssh -J sese-ai seko 'sudo fail2ban-client status sshd'          # jamais -i brut sur le hop !
+ssh -J sese-ai seko 'sudo fail2ban-client set sshd unbanip <IP>'
+```
+⚠️ `ssh -i ... -J user@host` : le `-i` ne s'applique PAS au hop → l'agent offre toutes ses clés
+→ « Too many authentication failures » sur le hop. Toujours passer par l'alias `sese-ai`.
+
+**Anti-ban permanent** : `roles/security` déploie `/etc/fail2ban/jail.d/whitelist.local`
+(`fail2ban_permanent_ignoreip` : waza + sese + tailnet). Prouvé par test : 4 échecs d'auth
+réels depuis waza → 0 ban. Le SSH git passe désormais par le serveur SSH interne Gitea
+(loopback :2222, alias `seko-git` ProxyJump) → un échec d'auth git ne touche plus jamais la jail sshd.
