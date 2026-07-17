@@ -3,11 +3,15 @@
 **Contexte :** T0.5 du plan `~/work/ops/loops/PLAN.md` (2026-07-17), suite à l'incident Plane
 du jour (frontend 200 pendant que l'API répondait 500 — non détecté par Kuma).
 
-**Statut de cette tâche : DONE (2026-07-17T~10:30Z).** Le blocker §3 est résolu — Seko-VPN
-est désormais enrôlé comme client du tailnet (Option 1, décision superviseur). Les 3
-monitors API-level (Plane, LiteLLM, Qdrant) sont **créés et live**, statut UP confirmé.
-n8n reste couvert par le monitor `Javisi — n8n` déjà existant côté VPAI (non dupliqué ici).
-Détail de la résolution en §6.
+**Statut de cette tâche : DONE (2026-07-17T~11:15Z).** Le blocker §3 est résolu — Seko-VPN
+est désormais enrôlé comme client du tailnet (Option 1, décision superviseur). Les 4
+monitors API-level demandés (Plane, LiteLLM, Qdrant, n8n) sont **créés et live**, statut UP
+confirmé pour les 4. Détail de la résolution en §6.
+>
+> **Correction (revue) :** une première passe n'avait créé que 3 des 4 monitors — n8n avait
+> été (à tort) considéré comme "déjà couvert" par la définition documentaire de
+> `uptime-config` (qui ne crée jamais rien en live, cf. §2). Le monitor `Javisi — n8n` a été
+> créé explicitement en live pour combler ce trou (id=15, voir §1/§6).
 
 ---
 
@@ -30,11 +34,12 @@ déjà rendues sur la box par `roles/uptime_kuma`, jamais affichées).
 | 12 | Javisi — Plane API (401-as-up) | HTTP | oui | 60s | `VPAI/roles/uptime-config` — créé 2026-07-17, **hors IaC de ce dépôt** (script ponctuel, cf §6) |
 | 13 | Javisi — LiteLLM /v1/models | HTTP | oui | 60s | idem |
 | 14 | Javisi — Qdrant health | HTTP | oui | 60s | idem |
+| 15 | Javisi — n8n | HTTP | oui | 60s | idem |
 
-**12 monitors au total**, une seule notification configurée : **Seko Telegram**
+**13 monitors au total**, une seule notification configurée : **Seko Telegram**
 (id=1, type telegram, `isDefault=True`) — c'est le canal utilisé par tous les monitors
-ci-dessus (y compris les 3 nouveaux, attachés explicitement par nom) et par le test
-d'alerte §4.
+ci-dessus (y compris les 4 nouveaux, attachés explicitement par nom, `notificationIDList`
+relu et confirmé `[1]` sur chacun) et par le test d'alerte §4.
 
 **Correction du postulat de la tâche** : le rôle `VPAI/roles/uptime-config` (souvent
 raccourci « uptime-config » dans les briefs) ne crée **aucun** monitor live — il génère
@@ -178,15 +183,17 @@ Zéro changement de la posture Caddy — confirmé conforme au design anticipé 
 pendant et après l'opération (vérifié : `sudo systemctl is-active headscale` conteneur Up,
 `tailscale status` waza intact, `ssh seko` fonctionnel).
 
-Les 3 monitors API-level (Plane 401-as-up, LiteLLM /v1/models, Qdrant health) ont été créés
-en live dans Kuma par un script ponctuel `uptime_kuma_api` (même méthode que le test
-d'alerte §4, credentials lus depuis le fichier déjà rendu par Ansible sur la box — jamais
-saisis ni affichés), notification `Seko Telegram` (id=1) attachée par nom. Idempotent —
-re-exécuté une seconde fois, `0 created, 3 already existed`. Statuts confirmés UP dans la
-minute suivant la création (401/401/200 respectivement). Ce script n'est **pas** intégré à
-`roles/uptime_kuma/templates/configure-monitors.py.j2` (IaC de ce dépôt) — hors périmètre
-de cette tâche (limité à la doc ici) ; à faire dans une tâche ultérieure pour éviter le même
-type de drift que `Javisi Backups` (§1).
+Les 4 monitors API-level demandés (Plane 401-as-up, LiteLLM /v1/models, Qdrant health, n8n)
+ont été créés en live dans Kuma par un script ponctuel `uptime_kuma_api` (même méthode que
+le test d'alerte §4, credentials lus depuis le fichier déjà rendu par Ansible sur la box —
+jamais saisis ni affichés), notification `Seko Telegram` (id=1) attachée par nom et relue
+après coup (`notificationIDList: [1]` confirmé sur les 4 via `get_monitor()`). Idempotent —
+le script a été rejoué deux fois : d'abord `3 created` (Plane/LiteLLM/Qdrant, n8n oublié par
+erreur), puis un rejeu avec n8n ajouté a donné `1 created, 3 already existed` (aucun doublon).
+Statuts confirmés UP pour les 4 (401/401/200/200 respectivement). Ce script n'est **pas**
+intégré à `roles/uptime_kuma/templates/configure-monitors.py.j2` (IaC de ce dépôt) — hors
+périmètre de cette tâche (limité à la doc ici) ; à faire dans une tâche ultérieure pour éviter
+le même type de drift que `Javisi Backups` (§1).
 
 Défs sources : `VPAI/roles/uptime-config/defaults/main.yml` (fusionnées dans
 `uptime_kuma_monitors`, l'ancien `uptime_kuma_monitors_api_level_blocked` n'existe plus).
