@@ -20,6 +20,7 @@
 | 5 | [Dépannage & Erreurs](05-troubleshooting.md) | Les 42 pièges documentés (Day 0 → CI/CD Round 5) | Juniors |
 | 6 | [Feuille de route V4](06-v4-roadmap.md) | Axes d'amélioration, priorisation, architecture cible V4 | Tous |
 | 7 | [Glossaire](07-glossaire.md) | Définitions des termes techniques utilisés dans le projet | Juniors |
+| 9 | [Uptime Kuma — Monitors](09-uptime-kuma-monitors.md) | État live des monitors, gap API-level et blocker VPN (T0.5 loops) | Contributeurs |
 
 ---
 
