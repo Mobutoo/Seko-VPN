@@ -28,11 +28,25 @@ explicit, commented, least-privilege set of rules instead.
   - NAS → seko:443 only — Zerobyte backup retrieval for restore drills. No
     SSH, no Headplane/Portainer reach beyond what Caddy/443 exposes.
   - iPhone/banga (personal) → seko:443 only — Vaultwarden/Headplane UI.
+  - sese → waza, ICMP only — the off-site dead-man switch
+    (`VPAI/roles/waza-deadman`) pings waza every 5 min.
+  - seko → sese:804 / seko → waza:22, SSH — **tentative**, only if Zerobyte's
+    backup collection turns out to be SSH-based (unconfirmed, see gap #5).
   - DERP/STUN (udp/3478) stays open to `*` — standard practice, not a
     security boundary.
 
 Full rationale and every assumption/caveat is commented inline in
 `policy.hujson.draft` — read it before adjusting anything.
+
+**Flagged deviation from the original brief** — the brief for this draft says
+the runner should get "accès limité aux endpoints nécessaires, pas au hub".
+Rule 4 (NAS → seko:443) is technically access *to the hub host*, because the
+backup-restore need (pulling Zerobyte archives) lives on the same box as the
+Headscale control plane and its admin apps. Given gap #3 below (Caddy is
+hostname-routed, so port 443 can't be split further), this is the narrowest
+expression possible today — but it is still a deviation from "pas au hub" in
+letter, not just in spirit, and should get an explicit human sign-off before
+being applied, not just be nodded through as "close enough".
 
 ## Known gaps / things to verify before applying
 
@@ -59,12 +73,42 @@ Full rationale and every assumption/caveat is commented inline in
    changes what the **tailnet mesh** allows. A port that's host-published
    and reachable from the public internet (like Caddy 80/443 already is)
    stays reachable from the public internet regardless of this ACL.
+5. **Zerobyte's actual backup transport is unconfirmed.** `roles/zerobyte/
+   templates/docker-compose.yml.j2` has no baked-in remote-target config —
+   jobs are set up through Zerobyte's own UI, so this repo's IaC alone
+   cannot tell you whether it collects backups from sese/waza over SSH,
+   over Caddy/443 (rclone/restic REST), or something else. Rule 8 in the
+   draft grants seko→sese:804 and seko→waza:22 as an SSH-transport guess —
+   check the real job config on `https://{{ domain_zerobyte }}` before
+   relying on it; delete the rule if backups actually go over 443 (already
+   covered by rules 0/6).
 
 ## How to apply it — safely, incrementally
 
 Headscale reloads its policy on every node's ACL evaluation (SIGHUP or
 service restart), so a mistake here can affect the whole mesh at once.
 Follow this order, do not skip steps:
+
+0. **Tag every node BEFORE swapping the policy — this is the step most
+   likely to be skipped and the one that will strand the mesh if it is.**
+   All current nodes are registered under Headscale user `mobuone` with NO
+   tags. This draft's `acls[]` reference tags only (`tag:hub`, `tag:prod`,
+   etc.) — an untagged node is evaluated under its user identity
+   (`mobuone@`), which owns no rule in this policy. Applying the policy
+   before tagging = every node loses all access at once (default-deny).
+   Tagging is a connectivity no-op under the CURRENT allow-all policy, so
+   do it first, while it's safe to get wrong:
+   ```bash
+   ssh seko 'docker exec headscale headscale nodes list'   # get each node's ID
+   ssh seko 'docker exec headscale headscale nodes tag -i <id-waza>  -t tag:workstation'
+   ssh seko 'docker exec headscale headscale nodes tag -i <id-sese>  -t tag:prod'
+   ssh seko 'docker exec headscale headscale nodes tag -i <id-seko>  -t tag:hub'
+   ssh seko 'docker exec headscale headscale nodes tag -i <id-phone> -t tag:personal'
+   # px58 (tag:runner): tag it once it has actually joined (T1.1), not before
+   ssh seko 'docker exec headscale headscale nodes list'   # confirm every tag stuck
+   ```
+   Only once every node shows its tag in `nodes list` should you move to
+   step 1.
 
 1. **Backup the current state first.**
    ```bash

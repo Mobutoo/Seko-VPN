@@ -156,7 +156,40 @@
       "dst": ["tag:prod:443,3100"],
     },
 
-    // 7. DERP/STUN — required for NAT traversal, open to every peer by
+    // 7. Sese (prod) → Workstation (waza): CONFIRMED LIVE FLOW — the
+    //    off-site dead-man switch (VPAI roles/waza-deadman, runs on sese)
+    //    pings waza's tailscale IP by ICMP every 5 min and alerts Telegram
+    //    if it goes quiet. No TCP port involved, ICMP only. Dropping this
+    //    rule would silently disable the dead-man switch (it fails "safe"
+    //    from the app's perspective — permanently alerting DOWN — not
+    //    silently, but still worth keeping intact).
+    //    Ref: VPAI roles/waza-deadman/templates/waza-deadman.sh.j2 (`ping`).
+    {
+      "action": "accept",
+      "proto": "icmp",
+      "src": ["tag:prod"],
+      "dst": ["tag:workstation:*"],
+    },
+
+    // 8. TENTATIVE — Hub (seko) → Sese/Workstation, SSH: Zerobyte ("Seko,
+    //    GFS orchestrateur backups" per ops/loops/PLAN.md inventory) is
+    //    assumed to collect backups FROM sese/waza, which would need seko
+    //    to reach their SSH ports if the transport is restic/rclone-over-
+    //    SSH. UNCONFIRMED: this repo's roles/zerobyte/templates/
+    //    docker-compose.yml.j2 has no baked-in remote-target config — jobs
+    //    are configured through Zerobyte's own UI post-deploy, so the real
+    //    transport (SSH? restic REST server? rclone to Caddy/443?) could
+    //    not be verified from IaC alone. VERIFY the actual Zerobyte job
+    //    config on seko (`https://{{ domain_zerobyte }}` UI) before relying
+    //    on this rule — if backups instead go over Caddy/443, rules 1 and
+    //    0 above already cover it and this one is a no-op you can delete.
+    {
+      "action": "accept",
+      "src": ["tag:hub"],
+      "dst": ["tag:prod:804", "tag:workstation:22"],
+    },
+
+    // 9. DERP/STUN — required for NAT traversal, open to every peer by
     //    design (this is standard Tailscale/Headscale practice: DERP relay
     //    is not the security boundary, the noise/WireGuard handshake is).
     //    Ref: roles/headscale/templates/docker-compose.yml.j2 ("3478:3478/udp").
@@ -173,6 +206,16 @@
     //    In particular, once applied: px58 can no longer reach hub's SSH,
     //    Headplane, or Portainer; and no node other than seko's Caddy can
     //    reach waza's ComfyUI/Remotion/OpenCode ports directly.
+    //
+    //    !! PRECONDITION, NOT OPTIONAL !! — every node MUST already carry
+    //    its tag (`headscale nodes tag -i <id> -t tag:<role>`, confirmed
+    //    via `headscale nodes list`) BEFORE this policy is swapped in. An
+    //    untagged node is evaluated under its Headscale USER identity
+    //    (`mobuone@`), which owns NO rule below — swapping this policy
+    //    while any node is still untagged strands it completely (default-
+    //    deny catches it). Tagging is a connectivity no-op under the
+    //    CURRENT allow-all policy, so do it first, verify, THEN swap.
+    //    See README.md step 1.
   ],
 
   // --------------------------------------------------------------------
