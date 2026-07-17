@@ -3,9 +3,11 @@
 **Contexte :** T0.5 du plan `~/work/ops/loops/PLAN.md` (2026-07-17), suite à l'incident Plane
 du jour (frontend 200 pendant que l'API répondait 500 — non détecté par Kuma).
 
-**Statut de cette tâche : PARTIAL.** Les monitors « infra » (ce dépôt) sont vérifiés live.
-Les monitors « API-level » applicatifs (Plane, LiteLLM, Qdrant, n8n) sont **spécifiés mais
-non déployés** — un blocker structurel (Caddy VPN-enforce) les rendrait aveugles, cf. §3.
+**Statut de cette tâche : DONE (2026-07-17T~10:30Z).** Le blocker §3 est résolu — Seko-VPN
+est désormais enrôlé comme client du tailnet (Option 1, décision superviseur). Les 3
+monitors API-level (Plane, LiteLLM, Qdrant) sont **créés et live**, statut UP confirmé.
+n8n reste couvert par le monitor `Javisi — n8n` déjà existant côté VPAI (non dupliqué ici).
+Détail de la résolution en §6.
 
 ---
 
@@ -25,10 +27,14 @@ déjà rendues sur la box par `roles/uptime_kuma`, jamais affichées).
 | 8 | DNS singa.ewutelo.cloud | DNS | oui | 300s | `roles/uptime_kuma` |
 | 9 | Headscale API | HTTP | oui | 60s | `roles/uptime_kuma` |
 | 10 | Javisi Backups | Push | oui | 60s | **hors IaC** (créé manuellement dans l'UI, absent de `configure-monitors.py.j2` — drift à noter, non corrigé ici, hors périmètre T0.5) |
+| 12 | Javisi — Plane API (401-as-up) | HTTP | oui | 60s | `VPAI/roles/uptime-config` — créé 2026-07-17, **hors IaC de ce dépôt** (script ponctuel, cf §6) |
+| 13 | Javisi — LiteLLM /v1/models | HTTP | oui | 60s | idem |
+| 14 | Javisi — Qdrant health | HTTP | oui | 60s | idem |
 
-**9 monitors au total**, une seule notification configurée : **Seko Telegram**
+**12 monitors au total**, une seule notification configurée : **Seko Telegram**
 (id=1, type telegram, `isDefault=True`) — c'est le canal utilisé par tous les monitors
-ci-dessus et par le test d'alerte §4.
+ci-dessus (y compris les 3 nouveaux, attachés explicitement par nom) et par le test
+d'alerte §4.
 
 **Correction du postulat de la tâche** : le rôle `VPAI/roles/uptime-config` (souvent
 raccourci « uptime-config » dans les briefs) ne crée **aucun** monitor live — il génère
@@ -55,7 +61,11 @@ Rien n'a été déployé en live sur les monitors API-level (voir §3 — blocke
 
 ---
 
-## 3. Blocker : Kuma (Seko-VPN) ne peut pas voir l'état applicatif réel
+## 3. Blocker : Kuma (Seko-VPN) ne peut pas voir l'état applicatif réel — RÉSOLU 2026-07-17
+
+> **Résolu** via l'Option 1 ci-dessous (décision superviseur actée). Section conservée
+> telle quelle comme trace du diagnostic d'origine ; voir §6 pour la résolution.
+
 
 **Constat vérifié par `curl` depuis la box Seko-VPN elle-même** (2026-07-17) :
 
@@ -129,11 +139,56 @@ capture d'écran du message Telegram reçu (pas d'accès au téléphone/chat dep
 
 ---
 
-## 5. Prochaine étape
+## 5. Prochaine étape — FAIT (2026-07-17)
 
-1. Décision humaine sur l'option 1 ou 2 du §3 (gate superviseur du plan loops).
-2. Une fois le blocker levé : déployer `uptime_kuma_monitors_api_level_blocked`
-   (VPAI/roles/uptime-config) → renommer en `uptime_kuma_monitors` (fusion), regénérer la doc
-   via `ansible-playbook --tags uptime-config`, créer les monitors dans l'UI Kuma en suivant
-   le Markdown généré, réattacher `Seko Telegram`.
-3. Régler le drift noté §1 (`Javisi Backups` absent de l'IaC) — hors périmètre ici.
+1. ~~Décision humaine sur l'option 1 ou 2 du §3~~ — **Option 1 actée par le superviseur.**
+2. ~~Une fois le blocker levé : déployer...~~ — **fait, voir §6.**
+3. Régler le drift noté §1 (`Javisi Backups` absent de l'IaC) — **toujours hors périmètre**,
+   non traité par cette tâche.
+4. **Reste (hors périmètre T0.5, observé en vérifiant les statuts)** : le monitor `SSH` (id=7)
+   est DOWN — `connect ECONNREFUSED 87.106.30.160:804`. `roles/uptime_kuma/defaults/main.yml`
+   a `ssh_custom_port: 804`, mais le SSH public de Seko-VPN écoute sur le port **22**
+   (confirmé `ssh seko` → port 22 dans `~/.ssh/config`, 804 est le port SSH de Sese-AI). Drift
+   pré-existant, pas introduit par cette tâche — signalé, non corrigé ici.
+
+## 6. Résolution — Seko-VPN enrôlé comme client du tailnet (2026-07-17)
+
+**Option 1 appliquée** : `VPAI/roles/headscale-node` appliqué à Seko-VPN via le nouveau
+playbook `VPAI/playbooks/utils/vpn-node-enroll.yml` (hosts: `vpn` — groupe déjà présent
+dans `VPAI/inventory/hosts.yml`, aucun changement d'inventaire nécessaire). User Headscale
+réutilisé : `mobuone` (id=2, déjà utilisé par les nœuds infra/service type
+`memory-bulk-pod-*`) — pas de user superflu créé.
+
+**Résultat** : Seko-VPN a désormais l'IP tailnet `100.64.0.5` (visible dans
+`tailscale status` depuis waza). Les extra_records Headscale déjà vivants dans
+`/opt/services/headscale/config/config.yaml` (`work/llm/mayi/qd.ewutelo.cloud` →
+`100.64.0.14`) résolvent maintenant correctement **depuis la box elle-même** et
+**depuis l'intérieur du conteneur `uptime-kuma`** (vérifié `docker exec uptime-kuma
+getent hosts` + curl — même résolveur, aucun `extra_hosts` nécessaire) :
+
+```
+work.ewutelo.cloud/api/v1/users/me/  ->  401  (était 403)
+llm.ewutelo.cloud/v1/models          ->  401  (était 403)
+qd.ewutelo.cloud/healthz             ->  200  (était 403)
+mayi.ewutelo.cloud/healthz           ->  200  (était 403)
+```
+
+Zéro changement de la posture Caddy — confirmé conforme au design anticipé (commentaire
+"Scenario 3" du Caddyfile). Headscale et le SSH public de Seko-VPN sont restés intacts
+pendant et après l'opération (vérifié : `sudo systemctl is-active headscale` conteneur Up,
+`tailscale status` waza intact, `ssh seko` fonctionnel).
+
+Les 3 monitors API-level (Plane 401-as-up, LiteLLM /v1/models, Qdrant health) ont été créés
+en live dans Kuma par un script ponctuel `uptime_kuma_api` (même méthode que le test
+d'alerte §4, credentials lus depuis le fichier déjà rendu par Ansible sur la box — jamais
+saisis ni affichés), notification `Seko Telegram` (id=1) attachée par nom. Idempotent —
+re-exécuté une seconde fois, `0 created, 3 already existed`. Statuts confirmés UP dans la
+minute suivant la création (401/401/200 respectivement). Ce script n'est **pas** intégré à
+`roles/uptime_kuma/templates/configure-monitors.py.j2` (IaC de ce dépôt) — hors périmètre
+de cette tâche (limité à la doc ici) ; à faire dans une tâche ultérieure pour éviter le même
+type de drift que `Javisi Backups` (§1).
+
+Défs sources : `VPAI/roles/uptime-config/defaults/main.yml` (fusionnées dans
+`uptime_kuma_monitors`, l'ancien `uptime_kuma_monitors_api_level_blocked` n'existe plus).
+Doc régénérée sur Sese-AI : `/opt/javisi/docs/uptime-kuma-monitors.md` (rôle `uptime-config`,
+déployé `ansible-playbook playbooks/stacks/site.yml -e target_env=prod --tags uptime-config`).
