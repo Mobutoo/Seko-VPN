@@ -1,0 +1,187 @@
+// ============================================================================
+// Headscale ACL Policy — DRAFT, NOT DEPLOYED
+// ============================================================================
+// Status  : PREP ONLY. This file is NOT referenced by any Ansible task and is
+//           NOT loaded by Headscale. The live policy remains
+//           roles/headscale/templates/policy.json.j2 (allow-all: src *, dst *:*).
+// Purpose : replace the allow-all policy with tag-based, explicit rules ahead
+//           of the NAS PX58 runner joining the tailnet (flat-network risk).
+// Apply   : see README.md in this same directory BEFORE touching anything live.
+// Audit   : docs/06-v4-roadmap.md §"9 axes de durcissement" axe #5
+//           ("ACL Headscale granulaires — remplacer la policy allow-all").
+// Source of truth for node/IP mapping used below (verified this session):
+//   - waza  100.64.0.1   workstation (RPi5) — VPAI CLAUDE.md, operator device
+//   - sese  100.64.0.14  prod-brain (Sese-AI/Javisi: n8n, LiteLLM, Grafana,
+//                        Qdrant, Plane) — VPAI CLAUDE.md
+//   - seko  100.64.0.5   Headscale hub + Vaultwarden/Portainer/Headplane/
+//                        Zerobyte/Uptime Kuma apps, enrolled as tailnet client
+//                        2026-07-17 (VPAI/docs/09-uptime-kuma-monitors.md §6)
+//   - px58 (NAS)         runner, NOT YET JOINED (planned ops/loops/PLAN.md
+//                        Phase 1, T1.1) — tag reserved here ahead of arrival
+//   - iPhone/banga       personal device, UI-only access expected
+//
+// Known port bindings used to write dst rules (verified in this repo):
+//   - Caddy (seko)      : host-published 80/tcp, 443/tcp+udp
+//                         (roles/caddy/templates/docker-compose.yml.j2)
+//   - Headscale DERP    : host-published 3478/udp
+//                         (roles/headscale/templates/docker-compose.yml.j2)
+//   - Headscale API 8080, Portainer 9000, Vaultwarden 80, Headplane 3000,
+//     Zerobyte 4096     : container-internal only (docker `expose`, not
+//                         `ports`) — reachable ONLY via Caddy on 443, NOT
+//                         directly over the tailnet IP. Confirmed by grepping
+//                         every roles/*/templates/docker-compose.yml.j2 in
+//                         this repo (2026-07-17). This means today's real
+//                         Headscale-ACL attack surface on seko is narrow:
+//                         SSH (22) + Caddy (443) + DERP (3478/udp).
+//   - Uptime Kuma 3001  : published as "127.0.0.1:3001:3001" — loopback only,
+//                         NOT reachable via Tailscale at all, no ACL needed.
+//   - Ollama (NAS px58) : 11434, per ops/loops/PLAN.md T1.3 (LiteLLM on sese
+//                         routes model "gemma-4-nas" to http://px58:11434)
+//   - Loki push (sese)  : 3100, per roles/alloy/templates (Seko's Alloy →
+//                         "http://<vpai_tailscale_ip>:3100/loki/api/v1/push")
+//
+// !! CAVEAT — sese-side internal ports (n8n/LiteLLM/Postgres/Qdrant/Plane
+// container ports) are defined in the VPAI repo, not this one. This draft
+// assumes — consistent with CLAUDE.md's "Docker networks" isolation model —
+// that they are, like seko, reachable cross-node ONLY via Caddy on 443, and
+// grants 443 + the documented SSH port (804) accordingly. VERIFY against
+// VPAI's roles/caddy + docker network definitions before enabling in prod.
+//
+// !! CAVEAT — SSH port drift: Seko-VPN's own inventory/group_vars/all/vars.yml
+// still declares ssh_custom_port: 804, but the REAL sshd on seko listens on
+// port 22 (confirmed twice: RUNBOOK-SEKO-VPN-RECOVERY-CONSOLE-IONOS.md §6
+// "ssh seko" via port 22, and VPAI docs/09-uptime-kuma-monitors.md §5.4 —
+// documented pre-existing drift, not fixed here). This policy uses 22 for
+// seko SSH. Re-verify `ssh -G seko | grep port` before applying.
+// ============================================================================
+{
+  // --------------------------------------------------------------------
+  // Groups — single operator (Headscale user "mobuone", id=2, reused by
+  // every node per VPAI docs/09-uptime-kuma-monitors.md §6). Kept as a
+  // group (not a bare user ref) so a second operator/service account can
+  // be added later without touching the acls[] below.
+  // --------------------------------------------------------------------
+  "groups": {
+    "group:admin": ["mobuone@"],
+  },
+
+  // --------------------------------------------------------------------
+  // tagOwners — who is allowed to self-tag a node with `--advertise-tags`
+  // at `tailscale up` time. Single operator today, so group:admin owns
+  // every tag. Splitting this out per-tag keeps it easy to hand a tag to
+  // a second identity later (e.g. a CI service account for px58) without
+  // touching the other tags.
+  // --------------------------------------------------------------------
+  "tagOwners": {
+    "tag:hub":         ["group:admin"], // seko — Headscale control-plane + admin apps
+    "tag:prod":        ["group:admin"], // sese — Javisi/VPAI AI brain
+    "tag:workstation": ["group:admin"], // waza — Pi operator device
+    "tag:runner":       ["group:admin"], // NAS px58 — headless runner, not yet joined
+    "tag:personal":    ["group:admin"], // iPhone/banga — personal device
+  },
+
+  "acls": [
+    // 0. Hub (seko) Caddy → Workstation (waza): reverse-proxy targets for
+    //    studio/cut/oc.ewutelo.cloud (ComfyUI 8188, Remotion 3200, OpenCode
+    //    3456). This is a LIVE flow today (roles/caddy/templates/
+    //    Caddyfile.j2, block "Pi Workstation — Proxy via Tailscale mesh") —
+    //    must stay allowed or those 3 vhosts break.
+    {
+      "action": "accept",
+      "src": ["tag:hub"],
+      "dst": ["tag:workstation:8188,3200,3456"],
+    },
+
+    // 1. Workstation (waza) is the operator device: broad reach for
+    //    day-to-day ops (Ansible deploys, Claude Code, SSH troubleshooting)
+    //    to every other node's SSH + Caddy surface.
+    {
+      "action": "accept",
+      "src": ["tag:workstation"],
+      "dst": [
+        "tag:hub:22,443",       // seko: SSH (real port, see caveat above) + Caddy (Headplane/Vaultwarden/Portainer/Zerobyte UIs)
+        "tag:prod:804,443",     // sese: SSH (804, CLAUDE.md) + Caddy (n8n/LiteLLM/Grafana/Qdrant/Plane)
+        "tag:runner:22,11434",  // NAS: SSH (bootstrap/ops) + Ollama direct (debug only — tighten once T1.1 lands)
+      ],
+    },
+
+    // 2. Sese (prod) → NAS runner: LiteLLM calls out to the NAS-hosted
+    //    Ollama model "gemma-4-nas". One-directional, single port.
+    //    Ref: ops/loops/PLAN.md T1.3.
+    {
+      "action": "accept",
+      "src": ["tag:prod"],
+      "dst": ["tag:runner:11434"],
+    },
+
+    // 3. NAS runner → Sese (prod): LiteLLM API for any AI agent running on
+    //    the NAS (T1.4 headless Claude Code) + Alloy → Loki telemetry
+    //    shipping (T2.2). NOT granted: SSH, or any other sese port.
+    {
+      "action": "accept",
+      "src": ["tag:runner"],
+      "dst": ["tag:prod:443,3100"],
+    },
+
+    // 4. NAS runner → Hub (seko): LIMITED to Caddy/443, for Zerobyte backup
+    //    retrieval during restore drills (ops/loops/PLAN.md Phase 3 —
+    //    "archive Zerobyte (Seko, GFS) → restore conteneur jetable NAS").
+    //    Explicitly NOT granted: hub SSH (22), Headplane/Portainer/
+    //    Vaultwarden are reachable on the SAME port 443 (Caddy is
+    //    hostname-routed, not port-routed — see README limitation §3) but
+    //    the runner is not meant to be an admin surface; keep this rule
+    //    under review once path-level isolation is possible.
+    {
+      "action": "accept",
+      "src": ["tag:runner"],
+      "dst": ["tag:hub:443"],
+    },
+
+    // 5. Personal device (iPhone/banga): UI-only reach to the hub's own
+    //    apps (Vaultwarden for the vault, Headplane if ever needed). No
+    //    SSH, no prod, no runner.
+    {
+      "action": "accept",
+      "src": ["tag:personal"],
+      "dst": ["tag:hub:443"],
+    },
+
+    // 6. Hub (seko) → Sese (prod): existing "Option 1 enrollment" use case
+    //    — Uptime Kuma (on seko) probes work/llm/qd/mayi.ewutelo.cloud on
+    //    sese via Caddy, and Seko's Alloy ships logs to sese's Loki.
+    //    Ref: VPAI docs/09-uptime-kuma-monitors.md §6.
+    {
+      "action": "accept",
+      "src": ["tag:hub"],
+      "dst": ["tag:prod:443,3100"],
+    },
+
+    // 7. DERP/STUN — required for NAT traversal, open to every peer by
+    //    design (this is standard Tailscale/Headscale practice: DERP relay
+    //    is not the security boundary, the noise/WireGuard handshake is).
+    //    Ref: roles/headscale/templates/docker-compose.yml.j2 ("3478:3478/udp").
+    {
+      "action": "accept",
+      "proto": "udp",
+      "src": ["*"],
+      "dst": ["tag:hub:3478"],
+    },
+
+    // -- Anything not matched above is IMPLICITLY DENIED. This is the
+    //    behavioural change vs. today's live policy.json.j2
+    //    ({"action":"accept","src":["*"],"dst":["*:*"]} = allow-all).
+    //    In particular, once applied: px58 can no longer reach hub's SSH,
+    //    Headplane, or Portainer; and no node other than seko's Caddy can
+    //    reach waza's ComfyUI/Remotion/OpenCode ports directly.
+  ],
+
+  // --------------------------------------------------------------------
+  // Tailscale SSH (distinct from OpenSSH above) — left EMPTY on purpose.
+  // This tailnet uses classic OpenSSH (key-based, custom ports, `ssh seko`
+  // / `ssh -p 804` aliases) today, not the Tailscale SSH feature. If that
+  // changes, mirror the acls[] src/dst pairs here instead of leaving this
+  // empty (an empty ssh[] does NOT disable OpenSSH — it just means
+  // Headscale grants no additional Tailscale-SSH sessions).
+  // --------------------------------------------------------------------
+  "ssh": [],
+}
